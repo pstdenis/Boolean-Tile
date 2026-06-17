@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boolean Tesseract</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0b1120;font-family:system-ui,sans-serif;color:#fff}
+canvas{display:block;width:100%;height:100%}
+#overlay{position:fixed;top:16px;left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:10}
+#overlay h1{font-size:20px;font-weight:700;color:#e2e8f0;letter-spacing:.5px}
+#overlay p{font-size:12px;color:#64748b;margin-top:2px}
+#tooltip{position:fixed;pointer-events:none;z-index:20;background:rgba(15,23,42,.92);border:1px solid #334155;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:600;color:#e2e8f0;display:none;backdrop-filter:blur(4px)}
+#tooltip .bits{font-size:11px;font-weight:400;color:#94a3b8;margin-top:2px;font-family:monospace}
+#tooltip .neighbors{font-size:10px;color:#64748b;margin-top:2px}
+.legend{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:16px;font-size:11px;color:#64748b;z-index:10;background:rgba(15,23,42,.7);padding:6px 14px;border-radius:20px;border:1px solid #1e293b;backdrop-filter:blur(4px)}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="overlay"><h1>Boolean Tesseract</h1><p>the 16 truth tables as a rotating 4‑cube</p></div>
+<div id="tooltip"></div>
+<div class="legend">
+  <span><i style="background:#ef4444"></i> constants</span>
+  <span><i style="background:#f59e0b"></i> projections</span>
+  <span><i style="background:#22c55e"></i> gates</span>
+  <span><i style="background:#3b82f6"></i> negated gates</span>
+  <span style="margin-left:4px;color:#475569">·  hover for details</span>
+</div>
+
+<script>
+const TILES = [
+  { idx:0,  name:"FALSE", bits:[0,0,0,0], kind:"const" },
+  { idx:1,  name:"AND",   bits:[0,0,0,1], kind:"gate" },
+  { idx:2,  name:"A∧¬B",  bits:[0,0,1,0], kind:"gate" },
+  { idx:3,  name:"A",     bits:[0,0,1,1], kind:"proj" },
+  { idx:4,  name:"¬A∧B",  bits:[0,1,0,0], kind:"gate" },
+  { idx:5,  name:"B",     bits:[0,1,0,1], kind:"proj" },
+  { idx:6,  name:"XOR",   bits:[0,1,1,0], kind:"gate" },
+  { idx:7,  name:"OR",    bits:[0,1,1,1], kind:"ngate" },
+  { idx:8,  name:"NOR",   bits:[1,0,0,0], kind:"ngate" },
+  { idx:9,  name:"XNOR",  bits:[1,0,0,1], kind:"gate" },
+  { idx:10, name:"¬B",    bits:[1,0,1,0], kind:"proj" },
+  { idx:11, name:"B→A",   bits:[1,0,1,1], kind:"gate" },
+  { idx:12, name:"¬A",    bits:[1,1,0,0], kind:"proj" },
+  { idx:13, name:"A→B",   bits:[1,1,0,1], kind:"gate" },
+  { idx:14, name:"NAND",  bits:[1,1,1,0], kind:"ngate" },
+  { idx:15, name:"TRUE",  bits:[1,1,1,1], kind:"const" }
+];
+
+const KIND_COLORS = { const:"#ef4444", proj:"#f59e0b", gate:"#22c55e", ngate:"#3b82f6" };
+
+// Build edge list: connect vertices differing by exactly 1 bit
+const EDGES = [];
+for (let i = 0; i < 16; i++) {
+  for (let j = i + 1; j < 16; j++) {
+    let diff = 0;
+    for (let k = 0; k < 4; k++) if (TILES[i].bits[k] !== TILES[j].bits[k]) diff++;
+    if (diff === 1) EDGES.push([i, j]);
+  }
+}
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const tooltip = document.getElementById('tooltip');
+let W, H;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── 4D math ─────────────────────────────────────────────────
+function to4D(bits) { return bits.map(b => b - 0.5); }
+
+function rotateXY(p, a) {
+  const [x,y,z,w] = p, c = Math.cos(a), s = Math.sin(a);
+  return [x*c - y*s, x*s + y*c, z, w];
+}
+function rotateZW(p, a) {
+  const [x,y,z,w] = p, c = Math.cos(a), s = Math.sin(a);
+  return [x, y, z*c - w*s, z*s + w*c];
+}
+
+function project4Dto3D(p, eyeDist) {
+  const [x,y,z,w] = p;
+  const f = eyeDist / (eyeDist + w);
+  return [x * f, y * f, z * f, w];
+}
+
+function project3Dto2D(p, camDist) {
+  const [x,y,z,_w] = p;
+  const f = camDist / (camDist + z);
+  return [x * f + W/2, -y * f + H/2, z, _w];
+}
+
+// ─── Animation ────────────────────────────────────────────────
+let angleXY = 0, angleZW = 0;
+const EYE_4D = 2.2;
+const CAM_3D = 3;
+const SCALE = Math.min(W, H) * 0.35;
+
+let hoveredVertex = -1;
+
+function render(time) {
+  angleXY = time * 0.0003;
+  angleZW = time * 0.0005;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Transform vertices
+  const proj = TILES.map(t => {
+    const p = to4D(t.bits);
+    const q = rotateZW(rotateXY(p, angleXY), angleZW);
+    const r = project4Dto3D(q, EYE_4D);
+    const s = project3Dto2D(r, CAM_3D);
+    return { ...t, p4d: q, p2d: s, px: s[0], py: s[1], z: s[2], w: s[3] };
+  });
+
+  // Check hover
+  let mx = -1, my = -1;
+  // mouse coords will be set by the mousemove handler
+  // We use cached values from the event handler
+
+  // Sort edges by average z (painter's algorithm, back to front)
+  const sortedEdges = EDGES.map(e => {
+    const za = proj[e[0]].z, zb = proj[e[1]].z;
+    return { ...e, avgZ: (za + zb) / 2 };
+  }).sort((a, b) => a.avgZ - b.avgZ);
+
+  // Draw edges
+  ctx.lineCap = 'round';
+  for (const e of sortedEdges) {
+    const a = proj[e[0]], b = proj[e[1]];
+    const dist = Math.min(Math.abs(a.z), Math.abs(b.z));
+    const alpha = Math.max(0.08, 0.5 - dist * 0.2);
+    const wAvg = (a.w + b.w) / 2;
+    const hue = 220 + wAvg * 40;
+    ctx.strokeStyle = `hsla(${hue},60%,60%,${alpha.toFixed(2)})`;
+    ctx.lineWidth = Math.max(0.5, 2 - dist * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(a.px, a.py);
+    ctx.lineTo(b.px, b.py);
+    ctx.stroke();
+  }
+
+  // Draw vertices
+  for (const v of proj) {
+    const dist = Math.abs(v.z);
+    const size = Math.max(3, 8 - dist * 1.5);
+    const alpha = Math.max(0.4, 1 - dist * 0.15);
+    const isHover = hoveredVertex === v.idx;
+    const color = KIND_COLORS[v.kind];
+
+    // Glow for hovered
+    if (isHover) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 20;
+    }
+
+    ctx.globalAlpha = isHover ? 1 : alpha;
+    ctx.beginPath();
+    ctx.arc(v.px, v.py, size, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (isHover) {
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+
+    // Label
+    const labelAlpha = Math.max(0.2, 0.9 - dist * 0.15);
+    ctx.globalAlpha = isHover ? 1 : labelAlpha;
+    ctx.font = isHover ? 'bold 12px sans-serif' : '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillStyle = isHover ? '#fff' : '#94a3b8';
+    ctx.fillText(v.name, v.px, v.py - size - 4);
+    ctx.globalAlpha = 1;
+
+    // Highlight neighbors of hovered vertex
+    if (hoveredVertex >= 0 && !isHover) {
+      const isNeighbor = EDGES.some(e =>
+        (e[0] === hoveredVertex && e[1] === v.idx) ||
+        (e[1] === hoveredVertex && e[0] === v.idx)
+      );
+      if (!isNeighbor) {
+        ctx.globalAlpha = 0.15;
+        ctx.beginPath();
+        ctx.arc(v.px, v.py, size, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // Draw axis indicators
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const axisColors = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b'];
+  const axisLabels = ['f(00)', 'f(01)', 'f(10)', 'f(11)'];
+  const axisDirs = [
+    rotateZW(rotateXY([1,0,0,0], angleXY), angleZW),
+    rotateZW(rotateXY([0,1,0,0], angleXY), angleZW),
+    rotateZW(rotateXY([0,0,1,0], angleXY), angleZW),
+    rotateZW(rotateXY([0,0,0,1], angleXY), angleZW)
+  ].map(p => {
+    const r = project4Dto3D(p, EYE_4D);
+    const s = project3Dto2D(r, CAM_3D);
+    return s;
+  });
+  for (let i = 0; i < 4; i++) {
+    const sx = (W/2) + (axisDirs[i][0] - W/2) * 0.15;
+    const sy = (H/2) + (axisDirs[i][1] - H/2) * 0.15;
+    ctx.fillStyle = axisColors[i];
+    ctx.globalAlpha = 0.5;
+    ctx.fillText(axisLabels[i], sx, sy);
+  }
+  ctx.globalAlpha = 1;
+
+  requestAnimationFrame(render);
+}
+
+// ─── Interaction ──────────────────────────────────────────────
+let mouseX = -1, mouseY = -1;
+
+canvas.addEventListener('mousemove', e => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  // Find nearest vertex
+  let minDist = 30, nearest = -1;
+  // Project vertices with current rotation
+  const angleXY_local = angleXY, angleZW_local = angleZW;
+  TILES.forEach((t, i) => {
+    const p = to4D(t.bits);
+    const q = rotateZW(rotateXY(p, angleXY_local), angleZW_local);
+    const r = project4Dto3D(q, EYE_4D);
+    const s = project3Dto2D(r, CAM_3D);
+    const dx = s[0] - mouseX, dy = s[1] - mouseY;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if (d < minDist) { minDist = d; nearest = i; }
+  });
+  hoveredVertex = nearest;
+  if (nearest >= 0) {
+    const v = TILES[nearest];
+    const bitStr = `(${v.bits.join(',')})`;
+    const neighbors = [];
+    for (const e of EDGES) {
+      if (e[0] === nearest) neighbors.push(TILES[e[1]].name);
+      if (e[1] === nearest) neighbors.push(TILES[e[0]].name);
+    }
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY - 10) + 'px';
+    tooltip.innerHTML = `
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${KIND_COLORS[v.kind]}"></span>
+        ${v.name}
+      </div>
+      <div class="bits">truth table ${bitStr} &nbsp;|&nbsp; index ${v.idx}</div>
+      <div class="neighbors">neighbors: ${neighbors.join(', ')}</div>
+    `;
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoveredVertex = -1;
+  tooltip.style.display = 'none';
+});
+
+// ─── Start ────────────────────────────────────────────────────
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

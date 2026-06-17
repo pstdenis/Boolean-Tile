@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Circuit Runner — Compound Boolean Sentences as Quantum Gates</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0f0f1a;color:#ccc;font-family:system-ui,sans-serif;display:flex;min-height:100vh}
+  #sidebar{width:320px;background:#15152a;border-right:1px solid #2a2a44;padding:18px;overflow-y:auto;flex-shrink:0}
+  #main{flex:1;padding:20px;overflow-y:auto}
+  h1{font-size:16px;color:#6cf;font-weight:600;margin-bottom:4px}
+  .sub{font-size:11px;color:#666;margin-bottom:14px}
+  label{font-size:11px;color:#999;display:block;margin-bottom:3px}
+  textarea, input, select{
+    width:100%;background:#1a1a2e;border:1px solid #2a2a44;color:#ccc;
+    padding:6px 8px;border-radius:4px;font-size:11px;font-family:monospace;margin-bottom:10px;
+  }
+  textarea{resize:vertical;min-height:50px}
+  button{
+    background:#1a3a5e;border:1px solid #2a5a8e;color:#6cf;
+    padding:5px 14px;border-radius:4px;cursor:pointer;font-size:11px;width:100%;margin-bottom:10px;
+  }
+  button:hover{background:#2a4a6e}
+  #results{margin-top:10px}
+  .section{margin-bottom:16px}
+  .section h3{font-size:12px;color:#6cf;font-weight:600;margin-bottom:6px;border-bottom:1px solid #2a2a44;padding-bottom:3px}
+  .vec-row{font-family:monospace;font-size:11px;line-height:1.6;padding:1px 0}
+  .vec-row .idx{color:#555;margin-right:8px;display:inline-block;width:40px}
+  .vec-row .amp{color:#8cf}
+  .vec-row .prob{color:#6c6}
+  .vec-row.highlight{background:#1a2a3a;border-radius:3px;padding:1px 4px}
+  #sentences{list-style:none;margin-bottom:10px}
+  #sentences li{padding:4px 6px;border:1px solid #2a2a44;border-radius:3px;margin-bottom:3px;font-size:11px;cursor:pointer;color:#aaa}
+  #sentences li:hover{background:#1a1a3a;border-color:#4a4a8a}
+  .truth-table{font-family:monospace;font-size:10px;border-collapse:collapse;width:100%}
+  .truth-table th{background:#1a1a3e;padding:3px 6px;border:1px solid #2a2a44;text-align:center;font-size:10px;color:#888}
+  .truth-table td{padding:2px 6px;border:1px solid #2a2a44;text-align:center}
+  .truth-table .t{color:#6c6}
+  .truth-table .f{color:#644}
+  .flex-row{display:flex;gap:10px}
+  .flex-row>*{flex:1}
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>Circuit Runner</h1>
+  <div class="sub">Compound Boolean sentences → quantum gates (§7)</div>
+
+  <label>Sentence</label>
+  <textarea id="sentenceInput" rows="2">XOR(AND(a,b), OR(c,d))</textarea>
+  <button id="runBtn">▶ Evaluate</button>
+
+  <label>Presets</label>
+  <ul id="sentences"></ul>
+
+  <!-- Input assignments can be added here -->
+</div>
+
+<div id="main">
+  <div id="results"></div>
+</div>
+
+<script>
+// ── Gate names → tile indices ──
+const GATE_NAMES = {
+  'FALSE':0, 'AND':1, 'A∧¬B':2, 'A':3, 'P':3,
+  '¬A∧B':4, 'B':5, 'Q':5, 'XOR':6, 'OR':7, 'NOR':8,
+  'XNOR':9, '¬B':10, 'B→A':11, '¬A':12, 'A→B':13,
+  'NAND':14, 'TRUE':15,
+};
+
+// ── 16 Z-basis diagonals (±1 under Convention A: True=-1, False=+1) ──
+// f(00),f(01),f(10),f(11) in basis |00⟩,|01⟩,|10⟩,|11⟩
+const Z_DIAGS = [
+  [ 1, 1, 1, 1], // 0 FALSE
+  [ 1, 1, 1,-1], // 1 AND
+  [ 1, 1,-1, 1], // 2 A∧¬B
+  [ 1, 1,-1,-1], // 3 P (A)
+  [ 1,-1, 1, 1], // 4 ¬A∧B
+  [ 1,-1, 1,-1], // 5 Q (B)
+  [ 1,-1,-1, 1], // 6 XOR
+  [ 1,-1,-1,-1], // 7 OR
+  [-1, 1, 1, 1], // 8 NOR
+  [-1, 1, 1,-1], // 9 XNOR
+  [-1, 1,-1, 1], // 10 ¬B
+  [-1, 1,-1,-1], // 11 B→A
+  [-1,-1, 1, 1], // 12 ¬A
+  [-1,-1, 1,-1], // 13 A→B
+  [-1,-1,-1, 1], // 14 NAND
+  [-1,-1,-1,-1], // 15 TRUE
+];
+
+// ── Preset sentences ──
+const PRESETS = [
+  'XOR(a,b)',
+  'AND(a,b)',
+  'OR(a,b)',
+  'NAND(a,b)',
+  'XOR(AND(a,b), OR(c,d))',
+  'AND(XOR(a,b), XOR(c,d))',
+  'OR(AND(a,b), AND(c,d))',
+  'XOR(a, AND(b,c))',
+  'AND(OR(a,b), OR(c,d))',
+];
+
+// ── Parser (recursive descent) ──
+// Grammar:
+//   expr  → term (',' term)*
+//   term  → NAME '(' expr ')'  |  VAR
+class Parser {
+  constructor(s){
+    this.s = s.replace(/\s+/g, '');
+    this.i = 0;
+  }
+  peek(){ return this.s[this.i] || ''; }
+  eat(c){
+    if(this.peek() === c) { this.i++; return true; }
+    return false;
+  }
+  error(msg){ throw new Error(`${msg} at position ${this.i}: "...${this.s.slice(Math.max(0,this.i-5), this.i+10)}..."`); }
+  parseName(){
+    let name = '';
+    while(/[A-Za-z→∧¬∨⊕]/.test(this.peek())) name += this.s[this.i++];
+    if(!name) this.error('Expected name or variable');
+    return name;
+  }
+  parseExpr(){
+    const name = this.parseName();
+    if(this.eat('(')){
+      const args = [];
+      do { args.push(this.parseExpr()); } while(this.eat(','));
+      if(!this.eat(')')) this.error('Expected )');
+      return { type:'gate', name, args };
+    }
+    return { type:'var', name };
+  }
+  static parse(s){ return new Parser(s).parseExpr(); }
+}
+
+// ── Classical evaluation ──
+function computeTruthTable(ast, varOrder){
+  const n = varOrder.length;
+  const N = 1 << n;
+  const table = [];
+  function evalNode(node, bits){
+    if(node.type === 'var'){
+      const idx = varOrder.indexOf(node.name);
+      return (bits >> (n-1-idx)) & 1; // msb-first ordering
+    }
+    const args = node.args.map(a => evalNode(a, bits));
+    const gateIdx = GATE_NAMES[node.name.toUpperCase()];
+    if(gateIdx === undefined) throw new Error(`Unknown gate: ${node.name}`);
+    const diag = Z_DIAGS[gateIdx];
+    // diag[f00,f01,f10,f11] ≡ f(0,0),f(0,1),f(1,0),f(1,1) under Convention A
+    // args are [p, q] under Convention A: True=-1, False=+1
+    // We need position: if arg0=False(0)→a=0, arg0=True(1)→a=1
+    // pos = 3 - (a*2 + b) = 3 - (arg0*2 + arg1)
+    const a = args[0], b = args[1];
+    const pos = a*2 + b;
+    return diag[pos] === -1 ? 1 : 0;
+  }
+  for(let bits = 0; bits < N; bits++){
+    table.push(evalNode(ast, bits));
+  }
+  return table;
+}
+
+// ── State vector display ──
+function formatVec(re, im){
+  const mag = Math.sqrt(re*re + im*im);
+  let s = '';
+  if(Math.abs(re) > 1e-6) s += re.toFixed(4);
+  if(Math.abs(im) > 1e-6){
+    if(s && im >= 0) s += '+';
+    s += im.toFixed(4) + 'i';
+  }
+  if(!s) s = '0';
+  return { str: s.padStart(10), prob: (mag*mag*100).toFixed(1) + '%' };
+}
+
+function displayResults(ast, varOrder, table){
+  const n = varOrder.length;
+  const N = 1 << n;
+  const el = document.getElementById('results');
+
+  // Build Z-basis diagonal from truth table
+  const zDiag = table.map(v => v === 1 ? -1 : 1);
+
+  // Initial state |0...0⟩ → all amplitude in first entry
+  let state = new Array(N).fill(0).map(() => [0,0]);
+  state[0] = [1, 0];
+
+  // Apply Z-basis: multiply by diagonal
+  for(let i = 0; i < N; i++){
+    state[i][0] *= zDiag[i];
+    state[i][1] *= zDiag[i];
+  }
+
+  // Apply H^⊗ⁿ to get X-basis
+  // Walsh-Hadamard: H^⊗ⁿ |i⟩ = 1/√N Σⱼ (-1)^{i·j} |j⟩
+  // So state in X-basis: |ψ_X⟩ = H^⊗ⁿ |ψ_Z⟩
+  const xState = new Array(N).fill(0).map(() => [0,0]);
+  const invSqrt = 1 / Math.sqrt(N);
+  for(let j = 0; j < N; j++){
+    let re = 0, im = 0;
+    for(let i = 0; i < N; i++){
+      const dot = popcount(i & j) & 1;
+      const s = dot ? -1 : 1;
+      re += s * state[i][0] * invSqrt;
+      im += s * state[i][1] * invSqrt;
+    }
+    xState[j] = [re, im];
+  }
+
+  let html = '';
+
+  // Truth table
+  html += `<div class="section"><h3>Truth table (${n} vars, ${N} rows)</h3>`;
+  html += `<table class="truth-table"><tr>`;
+  for(const v of varOrder) html += `<th>${v}</th>`;
+  html += `<th>f</th></tr>`;
+  for(let bits = 0; bits < N; bits++){
+    const f = table[bits];
+    html += '<tr>';
+    for(let j = 0; j < n; j++){
+      const bit = (bits >> (n-1-j)) & 1;
+      html += `<td>${bit}</td>`;
+    }
+    html += `<td class="${f?'t':'f'}">${f}</td></tr>`;
+  }
+  html += `</table></div>`;
+
+  // Z-basis state
+  html += `<div class="section"><h3>Z-basis (diagonal phase encoding)</h3>`;
+  for(let i = 0; i < N; i++){
+    const r = zDiag[i];
+    const cls = r === -1 ? 'highlight' : '';
+    const bits = i.toString(2).padStart(n, '0');
+    html += `<div class="vec-row ${cls}"><span class="idx">|${bits}⟩</span><span class="amp">${r >= 0 ? '+1' : '-1'}</span></div>`;
+  }
+  html += `</div>`;
+
+  // X-basis state
+  html += `<div class="section"><h3>X-basis (H⊗ⁿ conjugated)</h3>`;
+  const probs = xState.map(([re, im]) => re*re + im*im);
+  const maxProb = Math.max(...probs);
+  for(let i = 0; i < N; i++){
+    const [re, im] = xState[i];
+    const p = probs[i];
+    const cls = p > 0.01 ? 'highlight' : '';
+    if(p > 0.001 || true){
+      const bits = i.toString(2).padStart(n, '0');
+      html += `<div class="vec-row ${cls}"><span class="idx">|${bits}⟩</span>`+
+        `<span class="amp">${re.toFixed(4)}${im>=0?'+':''}${im.toFixed(4)}i</span>`+
+        ` <span class="prob">${(p*100).toFixed(1)}%</span>`+
+        `<span style="display:inline-block;height:4px;width:${Math.round(p/maxProb*80)}px;background:#6cf;border-radius:2px;margin-left:6px;vertical-align:middle"></span></div>`;
+    }
+  }
+  html += `</div>`;
+
+  // Measurement expectation
+  html += `<div class="section"><h3>Measurement (Born rule)</h3>`;
+  // Probability of measuring True (=1 under {0,1})
+  let pTrue = 0;
+  for(let i = 0; i < N; i++){
+    const f = table[i];
+    if(f === 1) pTrue += probs[i];
+  }
+  html += `<p style="font-size:12px">P(output = True) = <strong style="color:#6cf">${(pTrue*100).toFixed(1)}%</strong></p>`;
+  html += `</div>`;
+
+  el.innerHTML = html;
+}
+
+function popcount(x){
+  x = x - ((x >>> 1) & 0x55555555);
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  x = (x + (x >>> 4)) & 0x0F0F0F0F;
+  return (x * 0x01010101) >>> 24;
+}
+
+// ── Main evaluation ──
+function evaluate(){
+  const src = document.getElementById('sentenceInput').value.trim();
+  if(!src) return;
+
+  let ast;
+  try {
+    ast = Parser.parse(src);
+  } catch(e){
+    document.getElementById('results').innerHTML =
+      `<div style="color:#f66;font-size:12px">Parse error: ${e.message}</div>`;
+    return;
+  }
+
+  // Collect variables
+  const vars = new Set();
+  function collectVars(node){
+    if(node.type === 'var') vars.add(node.name);
+    else node.args.forEach(collectVars);
+  }
+  collectVars(ast);
+  const varOrder = [...vars].sort();
+  if(varOrder.length > 6){
+    document.getElementById('results').innerHTML =
+      `<div style="color:#f66;font-size:12px">Too many variables (max 6, got ${varOrder.length})</div>`;
+    return;
+  }
+
+  // Compute truth table
+  let table;
+  try {
+    table = computeTruthTable(ast, varOrder);
+  } catch(e){
+    document.getElementById('results').innerHTML =
+      `<div style="color:#f66;font-size:12px">Eval error: ${e.message}</div>`;
+    return;
+  }
+
+  displayResults(ast, varOrder, table);
+}
+
+// ── UI ──
+function buildPresets(){
+  const ul = document.getElementById('sentences');
+  PRESETS.forEach(s => {
+    const li = document.createElement('li');
+    li.textContent = s;
+    li.addEventListener('click', () => {
+      document.getElementById('sentenceInput').value = s;
+      evaluate();
+    });
+    ul.appendChild(li);
+  });
+}
+
+document.getElementById('runBtn').addEventListener('click', evaluate);
+
+document.getElementById('sentenceInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter' && e.shiftKey){ e.preventDefault(); evaluate(); }
+});
+
+buildPresets();
+// Initial eval
+setTimeout(evaluate, 100);
+</script>
+</body>
+</html>

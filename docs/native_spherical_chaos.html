@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boolean tile IFS on the Bloch ball</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a12;color:#ccc;font-family:system-ui,sans-serif;overflow:hidden}
+  canvas{display:block}
+  #info{
+    position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    background:rgba(10,10,18,0.82);padding:6px 18px;border-radius:8px;
+    font-size:12px;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);
+    pointer-events:none;text-align:center;white-space:nowrap;
+  }
+  #info strong{color:#6cf}
+  #info .sub{font-size:10px;color:#666;margin-top:0}
+  #controls{
+    position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+    background:rgba(10,10,18,0.82);padding:6px 14px;border-radius:8px;
+    backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);
+    display:flex;gap:10px;align-items:center;font-size:11px;flex-wrap:wrap;justify-content:center;
+  }
+  #controls label{display:flex;align-items:center;gap:4px;color:#aaa}
+  #controls input[type=range]{width:70px;accent-color:#6cf}
+  #controls select{
+    background:#1a1a2e;border:1px solid rgba(255,255,255,0.12);color:#ccc;
+    padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;
+  }
+  #controls button{
+    background:#2a2a3e;border:1px solid rgba(255,255,255,0.1);color:#ccc;
+    padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px;
+  }
+  #controls button:hover{background:#3a3a5e}
+  #controls button.active{background:#1a3a5e;border-color:#6cf;color:#6cf}
+  #stats{color:#6cf;min-width:60px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+  #circuitPanel{
+    display:none;position:absolute;top:60px;right:12px;width:280px;
+    background:rgba(10,10,18,0.9);border:1px solid rgba(255,255,255,0.08);
+    border-radius:8px;padding:10px;backdrop-filter:blur(6px);font-size:11px;z-index:10;
+  }
+  #circuitPanel .sec{margin-bottom:6px}
+  #circuitPanel .sec h4{color:#6cf;font-size:10px;font-weight:600;border-bottom:1px solid #2a2a44;padding-bottom:2px;margin-bottom:3px}
+  #circuitPanel .z-row{font-family:monospace;font-size:9px;display:flex;gap:4px;padding:1px 0}
+  #circuitPanel .z-row .label{color:#555;width:45px}
+  #circuitPanel .z-row .val{width:20px;text-align:center}
+  #circuitPanel .z-row .phase{font-weight:600}
+  #circuitPanel .z-row .p-on{color:#6c6}
+  #circuitPanel .z-row .p-off{color:#644}
+  #circuitPanel .x-row{font-family:monospace;font-size:9px;padding:1px 0;display:flex;gap:4px;align-items:center}
+  #circuitPanel .x-row .label{color:#555;width:45px}
+  #circuitPanel .x-row .amp{color:#8cf;width:70px}
+  #circuitPanel .x-row .prob{color:#6c6;width:40px}
+  #circuitPanel .bar{height:4px;border-radius:2px;background:#6cf}
+  #circuitPanel .truth-tbl{font-family:monospace;font-size:9px;border-collapse:collapse;width:100%}
+  #circuitPanel .truth-tbl th{background:#1a1a3e;padding:1px 4px;border:1px solid #2a2a44;font-size:9px;color:#888}
+  #circuitPanel .truth-tbl td{padding:1px 4px;border:1px solid #2a2a44;text-align:center}
+  #circuitPanel .truth-tbl .t{color:#6c6}
+  #circuitPanel .truth-tbl .f{color:#644}
+  #circuitPanel .circuit-balls{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+  #circuitPanel .qball{width:60px;height:60px;border-radius:50%;position:relative;border:1px solid #2a2a44;overflow:hidden}
+  #circuitPanel .qball .qlabel{position:absolute;bottom:1px;left:50%;transform:translateX(-50%);font-size:8px;color:#666;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div id="info">
+  <strong id="opName">XOR</strong> · IFS in <span style="color:#6cf">θ</span><span style="color:#f96">φ</span><span style="color:#6c6">z</span> on the Bloch ball
+  <span class="sub" id="modeLabel">mode: Chaos</span>
+</div>
+
+<div id="controls">
+  <label>tile <select id="opSelect"></select></label>
+  <button id="modeChaos" class="active">🔀 Chaos</button>
+  <button id="modeTopo">🗺 Topography</button>
+  <button id="modeOverlay">🔀+🗺 Overlay</button>
+  <label>speed <input type="range" id="speedSlider" min="1" max="40" value="15"></label>
+  <label>size <input type="range" id="sizeSlider" min="0.3" max="3" value="1.2" step="0.1"></label>
+  <button id="chaosModeBtn" class="active">🌊 Volume</button>
+  <button id="surfaceToggle">⏺ Surface</button>
+  <button id="modeCircuit">🔬 Circuit</button>
+  <button id="resetBtn">⟳ reset</button>
+  <span id="stats">0 pts</span>
+</div>
+
+<div id="circuitPanel">
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+    <span style="color:#6cf;font-size:12px;font-weight:600">Circuit</span>
+    <input id="circuitInput" value="XOR(a,b)" style="flex:1;background:#1a1a2e;border:1px solid #2a2a44;color:#ccc;padding:3px 6px;border-radius:3px;font-size:11px;font-family:monospace">
+    <button id="circuitEvalBtn" style="background:#1a3a5e;border:1px solid #2a5a8e;color:#6cf;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:10px">▶</button>
+  </div>
+  <div id="circuitOutput" style="font-size:10px;line-height:1.5;max-height:300px;overflow-y:auto"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ── 16 tiles ──
+const TILES = {
+  '0':  {name:'FALSE', bits:[0,0,0,0], color:0x444444},
+  '1':  {name:'AND',   bits:[0,0,0,1], color:0x44aaff},
+  '2':  {name:'A∧¬B',  bits:[0,0,1,0], color:0x66cc88},
+  '3':  {name:'A',     bits:[0,0,1,1], color:0x88dd44},
+  '4':  {name:'¬A∧B',  bits:[0,1,0,0], color:0xccaa44},
+  '5':  {name:'B',     bits:[0,1,0,1], color:0xdd8844},
+  '6':  {name:'XOR',   bits:[0,1,1,0], color:0x88ddff},
+  '7':  {name:'OR',    bits:[0,1,1,1], color:0x66dd88},
+  '8':  {name:'NOR',   bits:[1,0,0,0], color:0xff6644},
+  '9':  {name:'XNOR',  bits:[1,0,0,1], color:0xff8844},
+  '10': {name:'¬B',    bits:[1,0,1,0], color:0xcc66ff},
+  '11': {name:'A∨¬B',  bits:[1,0,1,1], color:0xaa88ff},
+  '12': {name:'¬A',    bits:[1,1,0,0], color:0x88aaff},
+  '13': {name:'¬A∨B',  bits:[1,1,0,1], color:0x66ccff},
+  '14': {name:'NAND',  bits:[1,1,1,0], color:0xff6644},
+  '15': {name:'TRUE',  bits:[1,1,1,1], color:0xffffff},
+};
+const KEYS = Object.keys(TILES);
+
+// ── Operator evaluation (from Bloch.html) ──
+function computeBitwiseLogic(opIdx, depth, p, q) {
+  const N = 1 << depth;
+  const pInt = Math.floor(p * (N - 1));
+  const qInt = Math.floor(q * (N - 1));
+  let acc = 0;
+  for (let i = 0; i < depth; i++) {
+    const pb = (pInt >> (depth - 1 - i)) & 1;
+    const qb = (qInt >> (depth - 1 - i)) & 1;
+    const pos = 3 - (pb * 2 + qb);
+    const bit = (opIdx >> pos) & 1;
+    acc += bit * (1 << (depth - 1 - i));
+  }
+  return acc / (N - 1);
+}
+
+// ── IFS maps in (θ, φ) only ──
+// Derived from Euclidean (x,y) → ((x+a)/2, (y+b)/2)
+// with θ = π·x, φ = 2π·y
+const ALL_MAPS = [
+  ([t, p]) => [t/2, p/2],                          // a=0,b=0
+  ([t, p]) => [t/2, p/2 + Math.PI],                 // a=0,b=1
+  ([t, p]) => [(t + Math.PI)/2, p/2],              // a=1,b=0
+  ([t, p]) => [(t + Math.PI)/2, p/2 + Math.PI],    // a=1,b=1
+];
+
+function buildSurfaceMaps(bits){
+  const maps = [];
+  for(let i = 0; i < 4; i++){
+    if(bits[i] === 1){
+      const a = i >> 1, b = i & 1;
+      maps.push(([t, p]) => [
+        (t + a * Math.PI) / 2,
+        (p + b * 2 * Math.PI) / 2,
+      ]);
+    }
+  }
+  return maps;
+}
+
+// ── (θ, φ, z) → 3D Cartesian (Bloch ball with radial displacement) ──
+const HEIGHT_SCALE = 0.4;
+const BASE_RADIUS = 1.0;
+function toCart(theta, phi, z){
+  const r = BASE_RADIUS + z * HEIGHT_SCALE;
+  return new THREE.Vector3(
+    r * Math.sin(theta) * Math.cos(phi),
+    r * Math.cos(theta),
+    r * Math.sin(theta) * Math.sin(phi)
+  );
+}
+
+let evDepth = 12; // bitwise depth for z evaluation
+
+// ── Scene setup ──
+const scene = new THREE.Scene();
+const frustumH = 3.0;
+const camera = new THREE.OrthographicCamera(
+  -frustumH * innerWidth / innerHeight, frustumH * innerWidth / innerHeight,
+  frustumH, -frustumH, 0.1, 100);
+camera.position.set(3.2, 2.4, 4.8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0a0a12);
+document.body.prepend(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.prepend(labelRenderer.domElement);
+
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.enableDamping = true;
+orbit.dampingFactor = 0.08;
+orbit.autoRotate = true;
+orbit.autoRotateSpeed = 2.0;
+
+// ── Static sphere + axes ──
+{
+  const g = new THREE.SphereGeometry(0.99, 48, 36);
+  const m = new THREE.MeshBasicMaterial({ color: 0x1a2a44, wireframe: true, transparent: true, opacity: 0.15 });
+  scene.add(new THREE.Mesh(g, m));
+  [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)].forEach(dir => {
+    scene.add(new THREE.ArrowHelper(dir, new THREE.Vector3(), 1.35, 0x446688, 0.12, 0.06));
+  });
+  function L(t, p, c='#6688aa'){
+    const d = document.createElement('div'); d.textContent = t;
+    d.style.color = c; d.style.fontSize = '13px'; d.style.fontWeight = '600';
+    const l = new CSS2DObject(d); l.position.copy(p); scene.add(l);
+  }
+  L('|0⟩', new THREE.Vector3(0,1.25,0), '#6cf');
+  L('|1⟩', new THREE.Vector3(0,-1.25,0), '#f66');
+  L('X', new THREE.Vector3(1.35,0,0));
+  L('Y', new THREE.Vector3(0,0,1.35));
+}
+
+// ── Pole markers (the 4 virtual branch points) ──
+const poleGroup = new THREE.Group();
+scene.add(poleGroup);
+function updatePoles(opIdx){
+  while(poleGroup.children.length) poleGroup.remove(poleGroup.children[0]);
+  const tile = TILES[opIdx];
+  const col = tile.color;
+  // north pole (θ=0): maps (0,0) and (0,1)
+  const np = new THREE.Vector3(0, 1, 0);
+  // south pole (θ=π): maps (1,0) and (1,1)
+  const sp = new THREE.Vector3(0, -1, 0);
+  const active = tile.bits;
+
+  [{pos:np, bits:[active[0],active[1]], label:'(0,0)/(0,1)'},
+   {pos:sp, bits:[active[2],active[3]], label:'(1,0)/(1,1)'}].forEach(({pos, bits:bs, label}) => {
+    const nActive = bs.filter(b => b).length;
+    const g = new THREE.SphereGeometry(nActive > 0 ? 0.06 : 0.03, 16, 16);
+    const m = new THREE.MeshBasicMaterial({ color: nActive > 0 ? col : 0x333344 });
+    const dot = new THREE.Mesh(g, m);
+    dot.position.copy(pos);
+    poleGroup.add(dot);
+  });
+}
+
+// ── Point systems ──
+let chaosSystem = null;
+let topoSystem = null;
+let currentMode = 'chaos'; // 'chaos' | 'topo' | 'overlay'
+let currentOp = '6';
+
+function createChaosSystem(color){
+  if(chaosSystem) scene.remove(chaosSystem);
+  const mat = new THREE.PointsMaterial({
+    size: 0.012, sizeAttenuation: true,
+    transparent: true, opacity: 0.7,
+    vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const geo = new THREE.BufferGeometry();
+  const maxPts = 150000;
+  const pos = new Float32Array(maxPts * 3);
+  const col = new Float32Array(maxPts * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setDrawRange(0, 0);
+  chaosSystem = new THREE.Points(geo, mat);
+  chaosSystem.userData = { maxPts, count: 0, positions: pos, colors: col, baseColor: new THREE.Color(color) };
+  scene.add(chaosSystem);
+}
+
+// ── Chaos game state ──
+let state = [Math.PI/2, 0]; // [θ, φ]
+let chaosMaps = [];
+let running = true;
+let speed = 15;
+let surfaceOnly = false;
+let chaosMode = 'volume'; // 'surface' (active maps, z=1) or 'volume' (all maps, z evaluated)
+const SURFACE_THRESH = 0.07; // z within this distance of 1 counts as "surface"
+
+function stepChaos(batch = 30){
+  const sys = chaosSystem;
+  if(!sys || chaosMaps.length === 0) return;
+  const { maxPts, positions, colors, baseColor } = sys.userData;
+  let count = sys.userData.count;
+
+  for(let b = 0; b < batch; b++){
+    const map = chaosMaps[Math.floor(Math.random() * chaosMaps.length)];
+    state = map(state);
+    const theta = state[0] < 0 ? 0 : state[0] > Math.PI ? Math.PI : state[0];
+    const phi = state[1];
+    let z;
+    if(chaosMode === 'surface'){
+      z = 1;
+    } else {
+      z = computeBitwiseLogic(+currentOp, evDepth, theta / Math.PI, phi / (2 * Math.PI));
+      if(surfaceOnly && z < 1 - SURFACE_THRESH) { b--; continue; }
+    }
+    if(count < maxPts){
+      const p = toCart(theta, phi, z);
+      positions[count*3] = p.x;
+      positions[count*3+1] = p.y;
+      positions[count*3+2] = p.z;
+      let r2, g2, b2;
+      if(chaosMode === 'surface'){
+        const hue = ((theta / Math.PI) * 0.5 + (phi / (2 * Math.PI)) * 0.5) % 1;
+        const c = new THREE.Color(baseColor).multiplyScalar(0.5 + 0.3 * Math.sin(hue * 10));
+        r2 = c.r; g2 = c.g; b2 = c.b;
+      } else {
+        const bright = 0.3 + z * 0.7;
+        r2 = baseColor.r * bright;
+        g2 = baseColor.g * bright;
+        b2 = baseColor.b * bright;
+      }
+      colors[count*3] = r2;
+      colors[count*3+1] = g2;
+      colors[count*3+2] = b2;
+      count++;
+    }
+  }
+  sys.userData.count = count;
+  sys.geometry.attributes.position.needsUpdate = true;
+  sys.geometry.attributes.color.needsUpdate = true;
+  sys.geometry.setDrawRange(0, count);
+  document.getElementById('stats').textContent = `${count.toLocaleString()} pts`;
+}
+
+// ── Topography ──
+function buildTopography(opIdx, depth = 9){
+  if(topoSystem) scene.remove(topoSystem);
+  const tile = TILES[opIdx];
+  const resP = (1 << depth) * 1.5;
+  const resQ = (1 << depth) * 3.0;
+  const total = Math.floor(resP) * Math.floor(resQ);
+  const pos = new Float32Array(total * 3);
+  const col = new Float32Array(total * 3);
+  let idx = 0;
+  const c = new THREE.Color(tile.color);
+
+  for(let i = 0; i < resP; i++){
+    const p = i / (resP - 1);
+    const theta = p * Math.PI;
+    for(let j = 0; j < resQ; j++){
+      const q = j / (resQ - 1);
+      const phi = q * 2 * Math.PI;
+      const z = computeBitwiseLogic(+opIdx, depth, p, q);
+      if(surfaceOnly && z < 1 - SURFACE_THRESH) continue;
+      const pt = toCart(theta, phi, z);
+      pos[idx*3] = pt.x;
+      pos[idx*3+1] = pt.y;
+      pos[idx*3+2] = pt.z;
+      const bright = 0.3 + z * 0.7;
+      col[idx*3] = c.r * bright;
+      col[idx*3+1] = c.g * bright;
+      col[idx*3+2] = c.b * bright;
+      idx++;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({
+    size: depth > 6 ? 0.012 : 0.018,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  topoSystem = new THREE.Points(geo, mat);
+}
+
+function updateMode(){
+  if(chaosSystem) scene.remove(chaosSystem);
+  if(topoSystem) scene.remove(topoSystem);
+
+  if(currentMode === 'chaos' || currentMode === 'overlay'){
+    if(chaosSystem) scene.add(chaosSystem);
+  }
+  if(currentMode === 'topo' || currentMode === 'overlay'){
+    if(topoSystem) scene.add(topoSystem);
+  }
+  const isCircuit = currentMode === 'circuit';
+  document.getElementById('circuitPanel').style.display = isCircuit ? 'block' : 'none';
+  const label = isCircuit ? 'Circuit' : (currentMode.charAt(0).toUpperCase() + currentMode.slice(1));
+  document.getElementById('modeLabel').textContent = `mode: ${label}`;
+  document.getElementById('modeChaos').className = currentMode === 'chaos' ? 'active' : '';
+  document.getElementById('modeTopo').className = currentMode === 'topo' ? 'active' : '';
+  document.getElementById('modeOverlay').className = currentMode === 'overlay' ? 'active' : '';
+  document.getElementById('modeCircuit').className = isCircuit ? 'active' : '';
+  orbit.autoRotate = !isCircuit;
+}
+
+// ── Switch operator ──
+function switchOperator(opKey){
+  currentOp = opKey;
+  const tile = TILES[opKey];
+  document.getElementById('opName').textContent = tile.name;
+  chaosMaps = chaosMode === 'surface' ? buildSurfaceMaps(tile.bits) : ALL_MAPS;
+  updatePoles(opKey);
+  // rebuild topography
+  buildTopography(opKey);
+  // reset chaos
+  createChaosSystem(tile.color);
+  state = [Math.random() * Math.PI, Math.random() * 2 * Math.PI];
+  document.getElementById('stats').textContent = '0 pts';
+  updateMode();
+  // kickstart
+  for(let i = 0; i < 1000; i++) stepChaos(1);
+}
+
+function rebuildCurrentView(){
+  if(!currentOp) return;
+  const tile = TILES[currentOp];
+  chaosMaps = chaosMode === 'surface' ? buildSurfaceMaps(tile.bits) : ALL_MAPS;
+  createChaosSystem(tile.color);
+  buildTopography(currentOp);
+  state = [Math.random() * Math.PI, Math.random() * 2 * Math.PI];
+  document.getElementById('stats').textContent = '0 pts';
+  updateMode();
+}
+
+// ══════════════════════════════════════════════════
+// Circuit Runner (from §7 gate table)
+// ══════════════════════════════════════════════════
+
+const GATE_NAMES = {
+  'FALSE':0,'AND':1,'A∧¬B':2,'A':3,'P':3,
+  '¬A∧B':4,'B':5,'Q':5,'XOR':6,'OR':7,'NOR':8,
+  'XNOR':9,'¬B':10,'B→A':11,'¬A':12,'A→B':13,
+  'NAND':14,'TRUE':15,
+};
+
+const Z_DIAGS = [
+  [ 1, 1, 1, 1],[ 1, 1, 1,-1],[ 1, 1,-1, 1],[ 1, 1,-1,-1],
+  [ 1,-1, 1, 1],[ 1,-1, 1,-1],[ 1,-1,-1, 1],[ 1,-1,-1,-1],
+  [-1, 1, 1, 1],[-1, 1, 1,-1],[-1, 1,-1, 1],[-1, 1,-1,-1],
+  [-1,-1, 1, 1],[-1,-1, 1,-1],[-1,-1,-1, 1],[-1,-1,-1,-1],
+];
+
+class CircuitParser {
+  constructor(s){ this.s = s.replace(/\s+/g,''); this.i = 0; }
+  peek(){ return this.s[this.i]||''; }
+  eat(c){ if(this.peek()===c){this.i++;return true}return false; }
+  name(){
+    let n='';
+    while(/[A-Za-z→∧¬∨⊕]/.test(this.peek())) n+=this.s[this.i++];
+    if(!n) throw Error('Expected name');
+    return n;
+  }
+  expr(){
+    const n = this.name();
+    if(this.eat('(')){
+      const a=[]; do{a.push(this.expr())}while(this.eat(',')); 
+      if(!this.eat(')')) throw Error('Expected )');
+      return {type:'gate',name:n,args:a};
+    }
+    return {type:'var',name:n};
+  }
+  static parse(s){ return new CircuitParser(s).expr(); }
+}
+
+function circuitTruthTable(ast, vars){
+  const n = vars.length, N = 1 << n, tbl = [];
+  function evalNode(node, bits){
+    if(node.type === 'var'){
+      const idx = vars.indexOf(node.name);
+      return (bits >> (n-1-idx)) & 1;
+    }
+    const args = node.args.map(a => evalNode(a, bits));
+    const gi = GATE_NAMES[node.name.toUpperCase()];
+    if(gi === undefined) throw Error(`Unknown gate: ${node.name}`);
+    const a=args[0], b=args[1];
+    return Z_DIAGS[gi][a*2+b] === -1 ? 1 : 0;
+  }
+  for(let bits=0; bits<N; bits++) tbl.push(evalNode(ast, bits));
+  return tbl;
+}
+
+function circPop(x){ x=x-((x>>>1)&0x55555555); x=(x&0x33333333)+((x>>>2)&0x33333333); x=(x+(x>>>4))&0x0F0F0F0F; return (x*0x01010101)>>>24; }
+
+function circuitEval(){
+  const src = document.getElementById('circuitInput').value.trim() || 'XOR(a,b)';
+  let ast;
+  try { ast = CircuitParser.parse(src); } catch(e){
+    document.getElementById('circuitOutput').innerHTML = `<span style="color:#f66">Parse error</span>`;
+    return;
+  }
+  const vs = new Set();
+  function cv(n){ if(n.type==='var') vs.add(n.name); else n.args.forEach(cv); }
+  cv(ast);
+  const varOrder = [...vs].sort();
+  const n = varOrder.length;
+  if(n > 6){
+    document.getElementById('circuitOutput').innerHTML = `<span style="color:#f66">Max 6 vars</span>`;
+    return;
+  }
+  const N = 1 << n;
+  let table;
+  try { table = circuitTruthTable(ast, varOrder); } catch(e){
+    document.getElementById('circuitOutput').innerHTML = `<span style="color:#f66">Eval error</span>`;
+    return;
+  }
+  const zDiag = table.map(v => v === 1 ? -1 : 1);
+  const xState = new Array(N).fill(0).map(()=>[0,0]);
+  const invS = 1/Math.sqrt(N);
+  for(let j=0;j<N;j++){
+    let re=0,im=0;
+    for(let i=0;i<N;i++){
+      const dot = circPop(i&j)&1, s=dot?-1:1;
+      re += s*zDiag[i]*invS; im += s*0*invS;
+    }
+    xState[j]=[re,im];
+  }
+  const probs = xState.map(([r,i])=>r*r+i*i);
+  const maxP = Math.max(...probs)||1;
+  let pTrue=0;
+  for(let i=0;i<N;i++) if(table[i]===1) pTrue+=probs[i];
+
+  let html = '';
+  // truth table
+  html += `<div class="sec"><h4>Truth table (${n} vars)</h4><table class="truth-tbl"><tr>`;
+  for(const v of varOrder) html += `<th>${v}</th>`;
+  html += `<th>f</th></tr>`;
+  for(let bits=0; bits<N; bits++){
+    const f = table[bits];
+    html += '<tr>';
+    for(let j=0;j<n;j++) html += `<td>${(bits>>(n-1-j))&1}</td>`;
+    html += `<td class="${f?'t':'f'}">${f}</td></tr>`;
+  }
+  html += `</table></div>`;
+
+  // Z-basis
+  html += `<div class="sec"><h4>Z-basis (phase)</h4>`;
+  for(let i=0;i<N;i++){
+    const bits = i.toString(2).padStart(n,'0');
+    const cls = zDiag[i]===-1?'p-on':'';
+    html += `<div class="z-row"><span class="label">|${bits}⟩</span><span class="phase ${cls}">${zDiag[i]>=0?'+1':'−1'}</span></div>`;
+  }
+  html += `</div>`;
+
+  // X-basis
+  html += `<div class="sec"><h4>X-basis (H⊗ⁿ)</h4>`;
+  for(let i=0;i<N;i++){
+    const [re,im] = xState[i];
+    const p = probs[i];
+    if(p < 0.001) continue;
+    const bits = i.toString(2).padStart(n,'0');
+    const bw = Math.round(p/maxP*60);
+    html += `<div class="x-row"><span class="label">|${bits}⟩</span>` +
+      `<span class="amp">${re.toFixed(3)}${im>=0?'+':''}${im.toFixed(3)}i</span>` +
+      `<span class="prob">${(p*100).toFixed(0)}%</span>` +
+      `<span class="bar" style="width:${bw}px"></span></div>`;
+  }
+  html += `</div>`;
+
+  // pTrue
+  html += `<div class="sec"><h4>P(true) = ${(pTrue*100).toFixed(1)}%</h4></div>`;
+
+  // Bloch balls for each qubit
+  if(n <= 4){
+    html += `<div class="sec"><h4>Qubit states (X-basis)</h4><div class="circuit-balls">`;
+    for(let q=0; q<n; q++){
+      // reduced density matrix: compute <X>, <Y>, <Z> for qubit q
+      let ex=0, ey=0, ez=0;
+      for(let i=0;i<N;i++){
+        const [re,im] = xState[i];
+        const p = re*re+im*im;
+        // Pauli-X on qubit q: flip bit q
+        const i_x = i ^ (1 << (n-1-q));
+        // Pauli-Z on qubit q: sign based on bit q
+        const bit = (i >> (n-1-q)) & 1;
+        ez += p * (bit === 0 ? 1 : -1);
+        // Pauli-X: need amplitude at flipped index
+        const re2 = xState[i_x][0], im2 = xState[i_x][1];
+        ex += re*re2 + im*im2;
+        // Pauli-Y: i * (im*re2 - re*im2)
+        ey += im*re2 - re*im2;
+      }
+      // normalize
+      const bloch = [ex*2, ey*2, ez*2];
+      const bx = bloch[0].toFixed(3), by = bloch[1].toFixed(3), bz = bloch[2].toFixed(3);
+      // compute 2D projection of Bloch ball
+      const r = 24;
+      const dx = bx * r * 0.5, dy = by * r * 0.5;
+      const dotX = r + dx, dotY = r + dy;
+      const colR = Math.round(128+127*bz);
+      const colG = Math.round(128-127*bz);
+      html += `<div class="qball" style="background:radial-gradient(circle at ${dotX}px ${dotY}px, rgba(${colR},${colG},200,0.6) 4px, rgba(20,20,40,0.8) 8px, #0a0a12 20px)">` +
+        `<span class="qlabel">q${q}=${varOrder[q]}</span></div>`;
+    }
+    html += `</div></div>`;
+  }
+
+  // Pole colors: show Z-basis phases on IFS pole markers
+  // For circuit mode, the table entries at positions 00,01,10,11 → north, south poles
+  const poles = document.getElementById('circuitPoles');
+  if(poles) poles.style.display = 'none';
+
+  document.getElementById('circuitOutput').innerHTML = html;
+}
+
+// Wire tile selector to circuit input
+function syncCircuitFromTile(){
+  const tile = TILES[currentOp];
+  if(!tile) return;
+  const varA = 'a', varB = 'b';
+  const names = ['FALSE','AND','A∧¬B','A','¬A∧B','B','XOR','OR','NOR','XNOR','¬B','B→A','¬A','A→B','NAND','TRUE'];
+  document.getElementById('circuitInput').value = `${names[+currentOp]}(${varA},${varB})`;
+  circuitEval();
+}
+
+// ── UI ──
+const sel = document.getElementById('opSelect');
+KEYS.forEach(k => {
+  const o = document.createElement('option');
+  o.value = k; o.textContent = `${k.padStart(2)} · ${TILES[k].name}`;
+  sel.appendChild(o);
+});
+sel.value = '6';
+sel.addEventListener('change', () => { switchOperator(sel.value); syncCircuitFromTile(); });
+
+document.getElementById('speedSlider').addEventListener('input', e => {
+  speed = parseInt(e.target.value);
+});
+document.getElementById('sizeSlider').addEventListener('input', e => {
+  if(chaosSystem) chaosSystem.material.size = parseFloat(e.target.value) * 0.01;
+});
+document.getElementById('circuitEvalBtn').addEventListener('click', circuitEval);
+document.getElementById('circuitInput').addEventListener('keydown', e => { if(e.key==='Enter') circuitEval(); });
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  state = [Math.random() * Math.PI, Math.random() * 2 * Math.PI];
+  if(chaosSystem){
+    chaosSystem.userData.count = 0;
+    chaosSystem.geometry.setDrawRange(0, 0);
+    chaosSystem.geometry.attributes.position.needsUpdate = true;
+    chaosSystem.geometry.attributes.color.needsUpdate = true;
+  }
+  document.getElementById('stats').textContent = '0 pts';
+  orbit.autoRotate = true;
+});
+
+document.getElementById('modeChaos').addEventListener('click', () => {
+  currentMode = 'chaos'; updateMode();
+});
+document.getElementById('modeTopo').addEventListener('click', () => {
+  currentMode = 'topo'; updateMode();
+});
+document.getElementById('modeOverlay').addEventListener('click', () => {
+  currentMode = 'overlay'; updateMode();
+});
+document.getElementById('chaosModeBtn').addEventListener('click', () => {
+  chaosMode = chaosMode === 'surface' ? 'volume' : 'surface';
+  document.getElementById('chaosModeBtn').textContent = chaosMode === 'surface' ? '🌀 Fractal' : '🌊 Volume';
+  document.getElementById('chaosModeBtn').className = chaosMode === 'surface' ? 'active' : '';
+  document.getElementById('surfaceToggle').style.display = chaosMode === 'surface' ? 'none' : '';
+  rebuildCurrentView();
+});
+document.getElementById('surfaceToggle').addEventListener('click', () => {
+  surfaceOnly = !surfaceOnly;
+  document.getElementById('surfaceToggle').className = surfaceOnly ? 'active' : '';
+  rebuildCurrentView();
+});
+document.getElementById('modeCircuit').addEventListener('click', () => {
+  currentMode = 'circuit'; updateMode();
+  circuitEval();
+});
+
+window.addEventListener('resize', () => {
+  const aspect = innerWidth / innerHeight;
+  camera.left = -frustumH * aspect;
+  camera.right = frustumH * aspect;
+  camera.top = frustumH;
+  camera.bottom = -frustumH;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+});
+
+// ── Init ──
+switchOperator('6');
+syncCircuitFromTile();
+
+// ── Animate ──
+let lastTime = 0;
+function animate(time){
+  requestAnimationFrame(animate);
+  const dt = time - lastTime;
+  lastTime = time;
+  if(running && (currentMode === 'chaos' || currentMode === 'overlay')){
+    const n = Math.round(speed * (dt / 16));
+    stepChaos(Math.max(1, n));
+  }
+  orbit.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pure Łukasiewicz Dualists</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#cbd5e1;font-family:system-ui,sans-serif}
+body{display:flex;align-items:flex-start;justify-content:center}
+.page{flex-shrink:0;width:fit-content;height:fit-content;transform-origin:0 0}
+header{text-align:center;padding:12px 0 6px}
+header h1{font-size:18px;font-weight:700;color:#0f172a}
+header p{font-size:12px;color:#64748b;margin-top:2px}
+section{margin-bottom:10px}
+.section-title{font-size:14px;font-weight:700;color:#334155;margin:0 0 6px 2px}
+.grid{display:grid;gap:4px}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-2{grid-template-columns:repeat(2,1fr)}
+.card{background:#fff;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #e2e8f0;overflow:hidden;aspect-ratio:1/1;position:relative;display:flex;align-items:center;justify-content:center}
+.card canvas{display:block;width:calc(100% - 60px);height:calc(100% - 60px)}
+.card-header{position:absolute;top:0;left:0;right:0;text-align:center;padding:4px 6px;font-size:13px;font-weight:700;color:#1e293b;line-height:1.1;z-index:1;pointer-events:none}
+.card-eq{position:absolute;bottom:3px;left:0;right:0;text-align:center;font-size:10px;font-weight:600;color:#64748b;z-index:1;pointer-events:none}
+.card-desc{position:absolute;bottom:16px;left:0;right:0;text-align:center;font-size:10px;color:#94a3b8;z-index:1;pointer-events:none}
+.wide-card{aspect-ratio:auto;padding:8px}
+.legend{display:flex;gap:12px;justify-content:center;font-size:10px;color:#64748b;margin:4px 0}
+.legend span{display:flex;align-items:center;gap:3px}
+.legend i{display:inline-block;width:12px;height:3px;border-radius:2px}
+footer{height:20px}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <header>
+    <h1>Pure Łukasiewicz Dualists</h1>
+    <p>Mutual-reference sentence pairs in [0,1]² — no product hedges, just ¬, ↔, ⊕, ⊙</p>
+  </header>
+
+  <section>
+    <div class="section-title">Density attractors (80,000 seeds, 60 steady-state steps each)</div>
+    <div id="grid1" class="grid grid-3"></div>
+  </section>
+
+  <section>
+    <div class="section-title">Escape-time diagrams (iterations to converge)</div>
+    <div id="grid2" class="grid grid-3"></div>
+  </section>
+
+  <section>
+    <div class="section-title">3D trajectory — "lifting the corners into the Z axis"</div>
+    <p style="font-size:10px;color:#64748b;margin:-2px 0 4px 2px">isometric projection of (x, y, z) with z = biconditional index over 1000 steps</p>
+    <div class="legend">
+      <span><i style="background:#ef4444"></i> X = ¬Y, Y = ¬X</span>
+      <span><i style="background:#3b82f6"></i> X = X↔Y, Y = Y↔¬X</span>
+      <span><i style="background:#22c55e"></i> same, sequential</span>
+    </div>
+    <div id="grid3" class="grid grid-3"></div>
+  </section>
+
+  <footer></footer>
+</div>
+
+<script>
+const DUALISTS = [
+  {
+    name: "X = ¬Y, Y = ¬X",
+    eq: "x→1−y, y→1−x",
+    iter: s => [1 - s[1], 1 - s[0]]
+  },
+  {
+    name: "X = X↔Y, Y = Y↔¬X",
+    eq: "x→1−|x−y|, y→1−|x+y−1|",
+    iter: s => [1 - Math.abs(s[0] - s[1]), 1 - Math.abs(s[0] + s[1] - 1)]
+  },
+  {
+    name: "X = X↔Y, Y = Y↔¬X (seq)",
+    eq: "x→1−|x−y|, y→1−|x′+y−1|",
+    iter: s => { const xn = 1 - Math.abs(s[0] - s[1]); return [xn, 1 - Math.abs(xn + s[1] - 1)]; }
+  }
+];
+
+const grid1 = document.getElementById('grid1');
+const grid2 = document.getElementById('grid2');
+const grid3 = document.getElementById('grid3');
+const W = 400, H = 400, pad = 20, s = W - 2 * pad;
+
+function buildGrid(container, renderFn) {
+  container.innerHTML = '';
+  DUALISTS.forEach((d, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <canvas id="c${i}" width="${W}" height="${H}"></canvas>
+      <div class="card-header">${d.name}</div>
+      <div class="card-eq">${d.eq}</div>
+    `;
+    container.appendChild(card);
+    renderFn(i, card);
+  });
+}
+
+// ─── Density plot ──────────────────────────────────────────────
+function drawDensity(idx) {
+  const c = document.getElementById('c' + idx);
+  const ctx = c.getContext('2d', { alpha: false });
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(pad, pad, s, s);
+
+  const density = new Float32Array(W * H);
+  const SAMPLES = 80000;
+  for (let k = 0; k < SAMPLES; k++) {
+    let state = [Math.random(), Math.random()];
+    for (let i = 0; i < 100; i++) {
+      state = DUALISTS[idx].iter(state);
+      if (i >= 40) {
+        const px = Math.floor(state[0] * s) + pad;
+        const py = H - 1 - (Math.floor(state[1] * s) + pad);
+        if (px >= pad && px < W - pad && py >= pad && py < H - pad)
+          density[py * W + px]++;
+      }
+    }
+  }
+  let maxD = 0;
+  for (let i = 0; i < W * H; i++) if (density[i] > maxD) maxD = density[i];
+  const imgData = ctx.createImageData(W, H);
+  for (let py = 0; py < H; py++)
+    for (let px = 0; px < W; px++) {
+      const v = density[py * W + px] > 0 ? Math.log(1 + density[py * W + px]) / Math.log(1 + maxD) : 0;
+      const idx2 = (py * W + px) * 4;
+      const r = 20 + v * 200, g = 30 + v * 180, b = 80 + v * 175;
+      imgData.data[idx2] = r; imgData.data[idx2+1] = g; imgData.data[idx2+2] = b; imgData.data[idx2+3] = 255;
+    }
+  ctx.putImageData(imgData, 0, 0);
+  ctx.fillStyle = '#94a3b8'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('0', pad, H - 3); ctx.fillText('1', W - pad, H - 3);
+  ctx.fillText('0', 8, H - pad); ctx.fillText('1', 8, pad + 5);
+}
+
+// ─── Escape-time plot ──────────────────────────────────────────
+function drawEscape(idx) {
+  const c = document.getElementById('e' + idx);
+  const ctx = c.getContext('2d', { alpha: false });
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#cbd5e1';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(pad, pad, s, s);
+
+  const d = DUALISTS[idx];
+  const MAX_ITER = 80;
+  const THRESH = 0.01;
+  const imgData = ctx.createImageData(W, H);
+
+  for (let py = 0; py < H; py++)
+    for (let px = 0; px < W; px++) {
+      let state = [
+        (px - pad) / s,
+        1 - (py - pad) / s
+      ];
+      let iter = 0;
+      for (; iter < MAX_ITER; iter++) {
+        const nxt = d.iter(state);
+        const dx = nxt[0] - state[0], dy = nxt[1] - state[1];
+        if (dx * dx + dy * dy < THRESH * THRESH) break;
+        state = nxt;
+      }
+      const v = iter / MAX_ITER;
+      const idx2 = (py * W + px) * 4;
+      imgData.data[idx2] = Math.floor(v * 60);
+      imgData.data[idx2+1] = Math.floor(v * 100 + 80);
+      imgData.data[idx2+2] = Math.floor(v * 50 + 150);
+      imgData.data[idx2+3] = 255;
+    }
+  ctx.putImageData(imgData, 0, 0);
+  ctx.fillStyle = '#94a3b8'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('0', pad, H - 3); ctx.fillText('1', W - pad, H - 3);
+  ctx.fillText('0', 8, H - pad); ctx.fillText('1', 8, pad + 5);
+}
+
+// ─── 3D isometric trajectory ───────────────────────────────────
+function draw3D(idx) {
+  const c = document.getElementById('z' + idx);
+  const ctx = c.getContext('2d', { alpha: false });
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, W, H);
+
+  const d = DUALISTS[idx];
+  const STEPS = 1000;
+  const cx = W / 2, cy = H / 2;
+  const sc = 160;
+  const angle = 0.6, elev = 0.4;
+
+  // Compute trajectory
+  let state = [0.3, 0.7];
+  const pts = [];
+  for (let i = 0; i < STEPS; i++) {
+    pts.push([state[0], state[1]]);
+    state = d.iter(state);
+  }
+
+  // Map: (x, y, z=i/STEPS) → isometric projection
+  function project(p, zi) {
+    const x = (p[0] - 0.5) * sc;
+    const y = (p[1] - 0.5) * sc;
+    const z = (zi - 0.5) * sc * 0.6;
+    const cosA = Math.cos(angle), sinA = Math.sin(angle);
+    const cosE = Math.cos(elev), sinE = Math.sin(elev);
+    const x2 = x * cosA - y * sinA;
+    const y2 = x * sinA * cosE + y * cosA * cosE + z * sinE;
+    return [cx + x2, cy - y2];
+  }
+
+  // Draw axis cubes
+  ctx.strokeStyle = '#334155'; ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    ctx.beginPath();
+    let a = project([t, 0], 0), b = project([t, 1], 0);
+    ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    ctx.beginPath();
+    a = project([0, t], 0); b = project([1, t], 0);
+    ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+  }
+
+  // Draw trajectory segments colored by z
+  const colors = [
+    [59,130,246], [34,197,94], [239,68,68]
+  ];
+  const [r, g, b] = colors[idx];
+  for (let i = 1; i < STEPS; i++) {
+    const zi = i / STEPS;
+    const p0 = project(pts[i-1], (i-1)/STEPS);
+    const p1 = project(pts[i], zi);
+    const alpha = 0.15 + 0.85 * zi;
+    ctx.strokeStyle = `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+  }
+
+  // Draw start point
+  const s0 = project(pts[0], 0);
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(s0[0], s0[1], 3, 0, Math.PI*2); ctx.fill();
+
+  // Labels
+  ctx.fillStyle = '#64748b'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('x', cx + sc * 0.5 + 8, cy + 4);
+  ctx.fillText('y', cx - 8, cy - sc * 0.5 - 4);
+  ctx.fillText('z (time)', cx + sc * 0.35, cy - sc * 0.45);
+}
+
+// ─── Init ───────────────────────────────────────────────────────
+function init() {
+  // Density row
+  buildGrid(grid1, (i) => drawDensity(i));
+
+  // Escape-time row
+  DUALISTS.forEach((d, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<canvas id="e${i}" width="${W}" height="${H}"></canvas><div class="card-header">${d.name}</div><div class="card-eq">${d.eq}</div>`;
+    grid2.appendChild(card);
+    drawEscape(i);
+  });
+
+  // 3D trajectory row
+  DUALISTS.forEach((d, i) => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `<canvas id="z${i}" width="${W}" height="${H}"></canvas><div class="card-header">${d.name}</div><div class="card-desc">${STEPS_TO_DESC[i]}</div>`;
+    grid3.appendChild(card);
+    draw3D(i);
+  });
+
+  fitPage();
+}
+const STEPS_TO_DESC = [
+  "alternates between two lines",
+  "4 cycle points → lift reveals disk mapping",
+  "sequential coupling → spiral attractor"
+];
+
+function fitPage() {
+  const page = document.querySelector('.page');
+  const sw = page.scrollWidth, sh = page.scrollHeight;
+  const scale = Math.min(innerWidth / sw, innerHeight / sh);
+  page.style.transform = 'scale(' + scale + ')';
+  page.style.marginLeft = Math.round((innerWidth - sw * scale) / 2) + 'px';
+  page.style.marginTop = Math.round((innerHeight - sh * scale) / 2) + 'px';
+}
+
+window.addEventListener('load', init);
+window.addEventListener('resize', fitPage);
+new ResizeObserver(fitPage).observe(document.querySelector('.page'));
+</script>
+</body>
+</html>

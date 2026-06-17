@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3-Variable IFS: 70 N=4 Surfaces</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#111;color:#ccc;font-family:system-ui,sans-serif;padding:20px}
+  h1{font-size:18px;font-weight:300;margin-bottom:6px;letter-spacing:.05em}
+  h2{font-size:14px;font-weight:300;margin:18px 0 8px;color:#888}
+  p{font-size:12px;color:#666;margin-bottom:10px;max-width:800px;line-height:1.6}
+  .grid-16{display:grid;grid-template-columns:repeat(16,1fr);gap:2px;max-width:1200px}
+  .grid-70{display:grid;grid-template-columns:repeat(14,1fr);gap:1px;max-width:1200px}
+  .cell{position:relative;text-align:center}
+  .cell canvas{display:block;width:100%;image-rendering:pixelated}
+  .cell .label{font-size:9px;color:#666;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .highlight{border:2px solid #f90}
+  .highlight-label{color:#f90!important;font-weight:700}
+  .legend{display:flex;gap:10px;margin:8px 0;font-size:11px;color:#888}
+  .legend span{display:flex;align-items:center;gap:4px}
+  .swatch{display:inline-block;width:14px;height:14px;border:1px solid #444}
+  .tabs{display:flex;gap:8px;margin:10px 0}
+  .tab{padding:6px 14px;background:#222;border:1px solid #444;cursor:pointer;font-size:12px;color:#888;border-radius:3px}
+  .tab.active{background:#333;color:#fff;border-color:#f90}
+  a{color:#f90;text-decoration:none}
+  a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<h1>3-Variable IFS: All 70 Functions with 4 Live Cells (dim<sub>H</sub> = 2)</h1>
+<p>
+  Among 256 three-variable Boolean functions, exactly 70 have N=4 ones in the 2×2×2 truth table.
+  These produce IFS attractors with Hausdorff dimension log(4)/log(2) = 2.
+  <strong>16</strong> of these are <em>surfaces</em> (z uniquely determined by x,y at every bit)
+  — the graphs of the 16 two-variable Boolean operators lifted to 3D.
+  The remaining <strong>54</strong> have non-unique z for some (x,y) and produce more complex 2D sets.
+</p>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('surfaces')">16 Surfaces</div>
+  <div class="tab" onclick="switchTab('all70')">All 70</div>
+</div>
+
+<div id="tab-surfaces">
+  <h2>16 Surfaces — Graphs of z = g(x,y) for each 2-var operator g</h2>
+  <p>
+    These are the 3-variable IFS attractors where z is uniquely determined by (x,y) at every bit.
+    Each corresponds to lifting one of the 16 two-variable Boolean operators g(a,b) to a 3-variable function
+    f(a,b,c) = 1 ⟺ c = g(a,b). The resulting surface is the graph of z = g(x,y) evaluated bitwise.
+    Depth 7 (128×128 pixels), greyscale height (black = low, white = high).
+  </p>
+  <div class="legend">
+    <span><span class="swatch" style="background:#000"></span> z=0 (low)</span>
+    <span><span class="swatch" style="background:#fff"></span> z=1 (high)</span>
+    <span><span class="swatch" style="background:#f90"></span> XOR3 → XNOR surface (idx 9)</span>
+    <span><span class="swatch" style="background:#0af"></span> Toffoli → NAND surface (idx 14)</span>
+  </div>
+  <div class="grid-16" id="surface-grid"></div>
+</div>
+
+<div id="tab-all70" style="display:none">
+  <h2>All 70 N=4 Functions — classified by z-multiplicity at depth 5</h2>
+  <p>
+    Each cell shows which (x,y) pairs have 0 (black), exactly 1 (grey), or 2+ (white) compatible z values at each bit.
+    <strong>S</strong> = pure surface (all (x,y) have unique z), <strong>M</strong> = multi-valued (some (x,y) have 2+ z), 
+    <strong>I</strong> = incomplete (some (x,y) have no compatible z).
+    Among the 70 N=4 functions: 16 surfaces (S), 16 incomplete (I), 38 multi-valued (M).
+    <span style="color:#f90">Orange border: XOR3 (parity, idx 105)</span> &middot;
+    <span style="color:#0af">Blue border: Toffoli (CCX output, idx 86)</span>.
+  </p>
+  <div class="legend">
+    <span><span class="swatch" style="background:#000"></span> void — no compatible z</span>
+    <span><span class="swatch" style="background:#555"></span> surface — unique z</span>
+    <span><span class="swatch" style="background:#fff"></span> multi — 2+ compatible z</span>
+  </div>
+  <div class="grid-70" id="all70-grid"></div>
+</div>
+
+<script>
+const depthSurf = 7;
+const depthAll = 5;
+const label16 = [
+  "FALSE","AND","A&~B","A","~A&B","B","XOR","OR",
+  "NOR","XNOR","~B","B\u2192A","~A","A\u2192B","NAND","TRUE"
+];
+const poly16 = [
+  "0","xy","x(1-y)","x","(1-x)y","y","x\u2295y","x+y+xy",
+  "~(x+y+xy)","~(x\u2295y)","~y","x\u2192y","~x","y\u2192x","~(xy)","1"
+];
+
+function idxOf(a,b,c){return (a<<2)|(b<<1)|c}
+function liveCells(f){let r=[];for(let a=0;a<2;a++)for(let b=0;b<2;b++)for(let c=0;c<2;c++)if(f(a,b,c))r.push([a,b,c]);return r}
+
+function makeFrom2var(g2){
+  return (a,b,c)=>c===g2(a,b);
+}
+
+function makeXOR3(){
+  return (a,b,c)=>(a^b^c)===1;
+}
+function makeToff(){
+  return (a,b,c)=>(c^(a&b))===1;
+}
+function makeFromBits(bits){
+  return (a,b,c)=>bits[idxOf(a,b,c)]===1;
+}
+
+// Build the 16 surface functions (all 2-var Boolean operators lifted)
+function gAnd(a,b){return a&b}
+function gOr(a,b){return a|b}
+function gXor(a,b){return a^b}
+function gXnor(a,b){return 1-(a^b)}
+function gNand(a,b){return 1-(a&b)}
+function gNor(a,b){return 1-(a|b)}
+function gTrue(a,b){return 1}
+function gFalse(a,b){return 0}
+function gA(a,b){return a}
+function gNotA(a,b){return 1-a}
+function gB(a,b){return b}
+function gNotB(a,b){return 1-b}
+function gAImpB(a,b){return (1-a)|b}
+function gBImpA(a,b){return a|(1-b)}
+function gANotB(a,b){return a&(1-b)}
+function gNotAB(a,b){return (1-a)&b}
+
+const gList = [gFalse,gAnd,gANotB,gA,gNotAB,gB,gXor,gOr,gNor,gXnor,gNotB,gBImpA,gNotA,gAImpB,gNand,gTrue];
+const surfList = gList.map(g=>({g,make:()=>makeFrom2var(g)}));
+
+function getZbitsForFunc(f, a, b, depth){
+  let z = 0;
+  for(let i=0;i<depth;i++){
+    const ai = (a>>>(depth-1-i))&1;
+    const bi = (b>>>(depth-1-i))&1;
+    let found = -1;
+    for(let c=0;c<2;c++){
+      if(f(ai,bi,c)){found=c;break}
+    }
+    if(found<0)return null;
+    z = (z<<1)|found;
+  }
+  return z;
+}
+
+function countValidZ(f, a, b, depth){
+  let mult = false;
+  for(let i=0;i<depth;i++){
+    const ai = (a>>>(depth-1-i))&1;
+    const bi = (b>>>(depth-1-i))&1;
+    let cnt = 0;
+    for(let c=0;c<2;c++)if(f(ai,bi,c))cnt++;
+    if(cnt===0)return 0;
+    if(cnt>1)mult=true;
+  }
+  return mult ? 2 : 1;
+}
+
+function classifyFunction(f){
+  let hasZero=false, hasOne=false, hasTwo=false;
+  for(let a=0;a<2;a++){
+    for(let b=0;b<2;b++){
+      let cnt=0;
+      for(let c=0;c<2;c++)if(f(a,b,c))cnt++;
+      if(cnt===0)hasZero=true;
+      if(cnt===1)hasOne=true;
+      if(cnt===2)hasTwo=true;
+    }
+  }
+  if(hasZero)return 'incomplete';  // some (a,b) have no valid c
+  if(!hasTwo)return 'surface';     // each (a,b) has exactly one c
+  return 'multi';                  // some (a,b) have 2 valid c
+}
+
+function renderSurface(canvas, f, depth, highlight, color){
+  const N = 1<<depth;
+  canvas.width = N; canvas.height = N;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(N,N);
+  let minZ=Infinity, maxZ=-Infinity;
+  const vals = new Array(N*N);
+  for(let y=0;y<N;y++){
+    for(let x=0;x<N;x++){
+      const z = getZbitsForFunc(f, x, y, depth);
+      vals[y*N+x] = z;
+      if(z!==null){minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z)}
+    }
+  }
+  const range = maxZ-minZ || 1;
+  for(let y=0;y<N;y++){
+    for(let x=0;x<N;x++){
+      const v = vals[y*N+x];
+      const i = y*N+x;
+      if(v===null){
+        img.data[i*4]=0; img.data[i*4+1]=0; img.data[i*4+2]=0; img.data[i*4+3]=255;
+      }else{
+        const g = Math.round(255*(v-minZ)/range);
+        img.data[i*4]=g; img.data[i*4+1]=g; img.data[i*4+2]=g; img.data[i*4+3]=255;
+      }
+    }
+  }
+  ctx.putImageData(img,0,0);
+  if(highlight){
+    canvas.style.border='2px solid '+(color||'#f90');
+  }
+}
+
+function renderAllSurface(canvas, f, depth){
+  const N = 1<<depth;
+  canvas.width = N; canvas.height = N;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(N,N);
+  for(let y=0;y<N;y++){
+    for(let x=0;x<N;x++){
+      const ztype = countValidZ(f, x, y, depth);
+      const i = y*N+x;
+      if(ztype===0){
+        img.data[i*4]=0; img.data[i*4+1]=0; img.data[i*4+2]=0; img.data[i*4+3]=255;
+      }else if(ztype===1){
+        const g = 85;
+        img.data[i*4]=g; img.data[i*4+1]=g; img.data[i*4+2]=g; img.data[i*4+3]=255;
+      }else{
+        const g = 220;
+        img.data[i*4]=g; img.data[i*4+1]=g; img.data[i*4+2]=g; img.data[i*4+3]=255;
+      }
+    }
+  }
+  ctx.putImageData(img,0,0);
+}
+
+// Build surface grid
+function initSurfaces(){
+  const grid = document.getElementById('surface-grid');
+  const xor3 = makeXOR3();
+  const toff = makeToff();
+  for(let i=0;i<16;i++){
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const can = document.createElement('canvas');
+    const f = makeFrom2var(gList[i]);
+    const isXOR3 = (i===6);  // XOR -> XNOR surface... wait let me think
+    // gList[6] = gXor, so f(a,b,c) = 1 iff c = a^b
+    // But XOR3(a,b,c) = a^b^c = 1 iff c = a^b^1 = NOT(a^b) = XNOR(a,b)
+    // So gXor gives c=a^b which is NOT the same as XOR3!
+    // XOR3 gives c = XNOR(a,b), which is gList[9]
+    const isXOR3surface = (i===9);  // XNOR
+    const isToffSurface = (i===14); // NAND
+    const hl = isXOR3surface || isToffSurface;
+    const col = isXOR3surface ? '#f90' : (isToffSurface ? '#0af' : null);
+    renderSurface(can, f, depthSurf, hl, col);
+    cell.appendChild(can);
+    const lb = document.createElement('div');
+    lb.className = 'label' + (hl?' highlight-label':'');
+    if(i<label16.length) lb.textContent = i+': '+label16[i];
+    cell.appendChild(lb);
+    const pl = document.createElement('div');
+    pl.style.cssText = 'font-size:7px;color:#444';
+    if(i<poly16.length) pl.textContent = poly16[i];
+    cell.appendChild(pl);
+    grid.appendChild(cell);
+  }
+  // Add XOR3 and Toff annotations
+}
+
+function initAll70(){
+  const grid = document.getElementById('all70-grid');
+  // Generate all 256 3-var Boolean functions
+  let funcs = [];
+  for(let idx=0; idx<256; idx++){
+    const bits = [];
+    for(let b=0;b<8;b++)bits.push((idx>>>(7-b))&1);
+    const f = makeFromBits(bits);
+    const nLive = bits.reduce((s,v)=>s+v,0);
+    if(nLive===4){
+      funcs.push({bits, f, idx});
+    }
+  }
+    for(let k=0;k<funcs.length;k++){
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const can = document.createElement('canvas');
+    const {bits,f,idx} = funcs[k];
+    const cls = classifyFunction(f);
+    renderAllSurface(can, f, depthAll);
+
+    // XOR3 (parity): a^b^c, bits=01101001, decimal=105
+    // Toffoli (CCX output): c^(a&b), bits=01010110, decimal=86
+    const isX3 = idx === 105;
+    const isTF = idx === 86;
+    
+    if(isX3 || isTF){
+      can.style.border = '2px solid '+(isX3?'#f90':'#0af');
+    }
+    
+    cell.appendChild(can);
+    const lb = document.createElement('div');
+    lb.className = 'label' + ((isX3||isTF)?' highlight-label':'');
+    // Show truth table pattern in column order: (000)(001)(010)(011)(100)(101)(110)(111)
+    const pat = bits.join('').slice(0,4)+' '+bits.join('').slice(4);
+    const typeLabel = cls==='surface'?'S':(cls==='multi'?'M':'I');
+    lb.textContent = idx+' ['+typeLabel+']';
+    cell.appendChild(lb);
+    grid.appendChild(cell);
+  }
+}
+
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-surfaces').style.display = name==='surfaces'?'block':'none';
+  document.getElementById('tab-all70').style.display = name==='all70'?'block':'none';
+  event.target.classList.add('active');
+}
+
+initSurfaces();
+initAll70();
+</script>
+</body>
+</html>

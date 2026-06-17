@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quantum Bloch Ball – Gate Output Visualization</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a12;color:#ccc;font-family:system-ui,sans-serif;overflow:hidden}
+  canvas{display:block}
+  #info{
+    position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    background:rgba(10,10,18,0.82);padding:6px 18px;border-radius:8px;
+    font-size:12px;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);
+    pointer-events:none;text-align:center;white-space:nowrap;
+  }
+  #info strong{color:#6cf}
+  #info .sub{font-size:10px;color:#666;margin-top:0}
+  #controls{
+    position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+    background:rgba(10,10,18,0.82);padding:6px 14px;border-radius:8px;
+    backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);
+    display:flex;gap:10px;align-items:center;font-size:11px;flex-wrap:wrap;justify-content:center;
+  }
+  #controls label{display:flex;align-items:center;gap:4px;color:#aaa}
+  #controls input[type=range]{width:70px;accent-color:#6cf}
+  #controls select{
+    background:#1a1a2e;border:1px solid rgba(255,255,255,0.12);color:#ccc;
+    padding:2px 6px;border-radius:4px;font-size:11px;cursor:pointer;
+  }
+  #controls button{
+    background:#2a2a3e;border:1px solid rgba(255,255,255,0.1);color:#ccc;
+    padding:2px 10px;border-radius:4px;cursor:pointer;font-size:11px;
+  }
+  #controls button:hover{background:#3a3a5e}
+  #controls button.active{background:#1a3a5e;border-color:#6cf;color:#6cf}
+  #stats{color:#6cf;min-width:60px;text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+  #phaseLabel{color:#f96;min-width:30px;text-align:center;font-size:11px;font-variant-numeric:tabular-nums}
+  #phaseLabel:before{content:'φ=';color:#888}
+  #legend{
+    position:absolute;bottom:80px;right:16px;width:14px;height:120px;
+    border-radius:3px;border:1px solid rgba(255,255,255,0.1);overflow:hidden;
+  }
+</style>
+</head>
+<body>
+
+<div id="info">
+  <strong id="opName">XOR</strong> · Output qubit Bloch vector · purity <span id="purityLabel" style="color:#8f8">r</span>
+  <span class="sub" id="modeLabel">mode: Topography</span>
+</div>
+
+<div id="controls">
+  <label>gate <select id="opSelect"></select></label>
+  <button id="modeTopo" class="active">🗺 Topography</button>
+  <button id="modeChaos">🔀 Chaos</button>
+  <label>φ <input type="range" id="phaseSlider" min="0" max="628" value="0"><span id="phaseLabel">0.00</span></label>
+  <label>res <input type="range" id="resSlider" min="4" max="9" value="7"></label>
+  <label>speed <input type="range" id="speedSlider" min="1" max="40" value="15"></label>
+  <label>size <input type="range" id="sizeSlider" min="0.3" max="3" value="1.2" step="0.1"></label>
+  <button id="constrainBtn">⊜ All maps</button>
+  <button id="resetBtn">⟳ reset</button>
+  <span id="stats">0 pts</span>
+</div>
+
+<div id="legend"></div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+const KEYS = ['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15'];
+
+const TILES = {
+  '0':{name:'FALSE',bits:[0,0,0,0],color:0x444444},
+  '1':{name:'AND',  bits:[0,0,0,1],color:0x44aaff},
+  '2':{name:'A∧¬B', bits:[0,0,1,0],color:0x66cc88},
+  '3':{name:'A',    bits:[0,0,1,1],color:0x88dd44},
+  '4':{name:'¬A∧B', bits:[0,1,0,0],color:0xccaa44},
+  '5':{name:'B',    bits:[0,1,0,1],color:0xdd8844},
+  '6':{name:'XOR',  bits:[0,1,1,0],color:0x88ddff},
+  '7':{name:'OR',   bits:[0,1,1,1],color:0x66dd88},
+  '8':{name:'NOR',  bits:[1,0,0,0],color:0xff6644},
+  '9':{name:'XNOR', bits:[1,0,0,1],color:0xff8844},
+  '10':{name:'¬B',  bits:[1,0,1,0],color:0xcc66ff},
+  '11':{name:'B→A', bits:[1,0,1,1],color:0xaa88ff},
+  '12':{name:'¬A',  bits:[1,1,0,0],color:0x88aaff},
+  '13':{name:'A→B', bits:[1,1,0,1],color:0x66ccff},
+  '14':{name:'NAND',bits:[1,1,1,0],color:0xff6644},
+  '15':{name:'TRUE',bits:[1,1,1,1],color:0xffffff},
+};
+
+const Z_DIAGS = [
+  [ 1, 1, 1, 1],[ 1, 1, 1,-1],[ 1, 1,-1, 1],[ 1, 1,-1,-1],
+  [ 1,-1, 1, 1],[ 1,-1, 1,-1],[ 1,-1,-1, 1],[ 1,-1,-1,-1],
+  [-1, 1, 1, 1],[-1, 1, 1,-1],[-1, 1,-1, 1],[-1, 1,-1,-1],
+  [-1,-1, 1, 1],[-1,-1, 1,-1],[-1,-1,-1, 1],[-1,-1,-1,-1],
+];
+
+const PRODUCT_GATES = new Set([0, 3, 5, 6, 9, 10, 12, 15]);
+
+// ── Precompute 4×4 unitary for each gate ──
+// H⊗² = 0.5 × [[1,1,1,1],[1,-1,1,-1],[1,1,-1,-1],[1,-1,-1,1]]
+const H2 = [
+  [0.5, 0.5, 0.5, 0.5],
+  [0.5,-0.5, 0.5,-0.5],
+  [0.5, 0.5,-0.5,-0.5],
+  [0.5,-0.5,-0.5, 0.5],
+];
+
+// U_f[i][j] = (H⊗² · D_f · H⊗²)[i][j] — real 4×4 orthogonal matrix
+function precomputeUf(diag){
+  const U = Array.from({length: 4}, () => new Float64Array(4));
+  for(let i = 0; i < 4; i++){
+    for(let j = 0; j < 4; j++){
+      let s = 0;
+      for(let k = 0; k < 4; k++){
+        s += H2[i][k] * diag[k] * H2[k][j];
+      }
+      U[i][j] = s;
+    }
+  }
+  return U;
+}
+
+const UF_CACHE = Z_DIAGS.map(d => precomputeUf(d));
+
+// ── Core: compute output Bloch vector for gate[opIdx], input (A,B), phase φ ──
+// Returns {x, y, z, r}
+function computeOutputBloch(A, B, phi, opIdx){
+  const c = Math.cos(phi), s = Math.sin(phi);
+  const c2 = Math.cos(2*phi), s2 = Math.sin(2*phi);
+  const a0 = Math.sqrt(1 - A), a1 = Math.sqrt(A);
+  const b0 = Math.sqrt(1 - B), b1 = Math.sqrt(B);
+
+  // Input state |αβ⟩ in Z-basis (complex, 4 components)
+  const inRe = new Float64Array(4);
+  const inIm = new Float64Array(4);
+  inRe[0] = a0 * b0;
+  inRe[1] = a0 * b1 * c;  inIm[1] = a0 * b1 * s;
+  inRe[2] = a1 * b0 * c;  inIm[2] = a1 * b0 * s;
+  inRe[3] = a1 * b1 * c2; inIm[3] = a1 * b1 * s2;
+
+  // Apply U_f
+  const U = UF_CACHE[opIdx];
+  const outRe = new Float64Array(4);
+  const outIm = new Float64Array(4);
+  for(let i = 0; i < 4; i++){
+    let re = 0, im = 0;
+    for(let j = 0; j < 4; j++){
+      re += U[i][j] * inRe[j];
+      im += U[i][j] * inIm[j];
+    }
+    outRe[i] = re; outIm[i] = im;
+  }
+
+  // Partial trace qubit 2 → reduced density matrix of qubit 1
+  const p00 = outRe[0]*outRe[0] + outIm[0]*outIm[0] + outRe[1]*outRe[1] + outIm[1]*outIm[1];
+  const p11 = outRe[2]*outRe[2] + outIm[2]*outIm[2] + outRe[3]*outRe[3] + outIm[3]*outIm[3];
+  const c01re = outRe[0]*outRe[2] + outIm[0]*outIm[2] + outRe[1]*outRe[3] + outIm[1]*outIm[3];
+  const c01im = outRe[2]*outIm[0] - outRe[0]*outIm[2] + outRe[3]*outIm[1] - outRe[1]*outIm[3];
+
+  // Bloch vector: ρ₁ = ½(I + r·σ)
+  const bx = 2 * c01re;
+  const by = 2 * c01im;
+  const bz = p00 - p11;
+  const r = Math.sqrt(bx*bx + by*by + bz*bz);
+
+  return { x: bx, y: by, z: bz, r };
+}
+
+// ── Viridis colormap (5-key linear interpolation) ──
+const VIRIDIS_STOPS = [
+  [0.00, [ 68,  1,  84]],
+  [0.25, [ 59, 82, 139]],
+  [0.50, [ 33,145, 140]],
+  [0.75, [ 94,201,  98]],
+  [1.00, [253,231,  37]],
+];
+
+function viridis(t){
+  t = Math.max(0, Math.min(1, t));
+  for(let i = 0; i < VIRIDIS_STOPS.length - 1; i++){
+    if(t >= VIRIDIS_STOPS[i][0] && t <= VIRIDIS_STOPS[i+1][0]){
+      const f = (t - VIRIDIS_STOPS[i][0]) / (VIRIDIS_STOPS[i+1][0] - VIRIDIS_STOPS[i][0]);
+      const a = VIRIDIS_STOPS[i][1], b = VIRIDIS_STOPS[i+1][1];
+      return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+    }
+  }
+  return VIRIDIS_STOPS[VIRIDIS_STOPS.length-1][1];
+}
+
+// ── Scene setup ──
+const scene = new THREE.Scene();
+const frustumH = 2.2;
+const camera = new THREE.OrthographicCamera(
+  -frustumH * innerWidth / innerHeight, frustumH * innerWidth / innerHeight,
+  frustumH, -frustumH, 0.1, 100);
+camera.position.set(3.0, 2.0, 4.5);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0a0a12);
+document.body.prepend(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.prepend(labelRenderer.domElement);
+
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.enableDamping = true;
+orbit.dampingFactor = 0.08;
+orbit.autoRotate = true;
+orbit.autoRotateSpeed = 2.0;
+
+// ── Bloch sphere shell (semi-transparent wireframe) ──
+{
+  const g = new THREE.SphereGeometry(1.0, 40, 28);
+  const m = new THREE.MeshBasicMaterial({ color: 0x1a2a44, wireframe: true, transparent: true, opacity: 0.2 });
+  scene.add(new THREE.Mesh(g, m));
+  // Axes
+  const axCol = 0x446688;
+  [new THREE.Vector3(1.3,0,0), new THREE.Vector3(0,1.3,0), new THREE.Vector3(0,0,1.3)].forEach((d,i) => {
+    scene.add(new THREE.ArrowHelper(d, new THREE.Vector3(), 1.0, axCol, 0.1, 0.05));
+  });
+  // Labels
+  function label(t, p, c='#6688aa'){
+    const d = document.createElement('div'); d.textContent = t;
+    d.style.color = c; d.style.fontSize = '13px'; d.style.fontWeight = '600';
+    const l = new CSS2DObject(d); l.position.copy(p); scene.add(l);
+  }
+  label('|0⟩', new THREE.Vector3(0,1.15,0), '#6cf');
+  label('|1⟩', new THREE.Vector3(0,-1.15,0), '#f66');
+  label('X', new THREE.Vector3(1.3,0,0));
+  label('Y', new THREE.Vector3(0,0,1.3));
+  label('Z', new THREE.Vector3(0,1.3,0));
+}
+
+// ── Legend bar ──
+{
+  const canvas = document.createElement('canvas');
+  canvas.width = 14; canvas.height = 120;
+  const ctx = canvas.getContext('2d');
+  for(let y = 0; y < 120; y++){
+    const t = 1 - y / 119;
+    const [r, g, b] = viridis(t);
+    ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+    ctx.fillRect(0, y, 14, 1);
+  }
+  const el = document.getElementById('legend');
+  el.appendChild(canvas);
+}
+
+// ── Point cloud ──
+let topoSystem = null;
+let chaosSystem = null;
+let currentMode = 'topo';
+let currentOp = '6';
+let currentPhi = 0;
+let topoRes = 7;
+let constrainOn = false;
+
+// Chaos state
+let chaosState = [Math.random(), Math.random()];
+let chaosMaps = [];
+let running = true;
+let speed = 15;
+
+function makePointCloud(maxPts, color = 0x88ddff){
+  const mat = new THREE.PointsMaterial({
+    size: 0.012, sizeAttenuation: true,
+    transparent: true, opacity: 0.7,
+    vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(maxPts * 3);
+  const col = new Float32Array(maxPts * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setDrawRange(0, 0);
+  const sys = new THREE.Points(geo, mat);
+  sys.userData = { maxPts, count: 0, positions: pos, colors: col };
+  return sys;
+}
+
+function rebuildTopography(){
+  if(topoSystem){ scene.remove(topoSystem); topoSystem = null; }
+  const res = 1 << topoRes;
+  const total = res * res;
+  const sys = makePointCloud(total);
+  const { positions, colors } = sys.userData;
+  let idx = 0;
+
+  for(let i = 0; i < res; i++){
+    const A = i / (res - 1);
+    for(let j = 0; j < res; j++){
+      const B = j / (res - 1);
+      const { x, y, z, r } = computeOutputBloch(A, B, currentPhi, +currentOp);
+      positions[idx*3]   = x;
+      positions[idx*3+1] = z;  // swap Y and Z: Z is vertical in THREE.js
+      positions[idx*3+2] = y;
+      const [cr, cg, cb] = viridis(r);
+      colors[idx*3]   = cr / 255;
+      colors[idx*3+1] = cg / 255;
+      colors[idx*3+2] = cb / 255;
+      idx++;
+    }
+  }
+
+  sys.userData.count = idx;
+  sys.geometry.attributes.position.needsUpdate = true;
+  sys.geometry.attributes.color.needsUpdate = true;
+  sys.geometry.setDrawRange(0, idx);
+  scene.add(sys);
+  topoSystem = sys;
+  document.getElementById('stats').textContent = `${idx.toLocaleString()} pts`;
+}
+
+// ── IFS maps in (A,B) space ──
+const ALL_MAPS = [
+  ([A, B]) => [A/2, B/2],
+  ([A, B]) => [A/2, (B+1)/2],
+  ([A, B]) => [(A+1)/2, B/2],
+  ([A, B]) => [(A+1)/2, (B+1)/2],
+];
+
+function buildBoolMaps(bits){
+  const maps = [];
+  for(let i = 0; i < 4; i++){
+    if(bits[i] === 1){
+      const a = i >> 1, b = i & 1;
+      maps.push(([A, B]) => [(A + a) / 2, (B + b) / 2]);
+    }
+  }
+  return maps;
+}
+
+function createChaosSystem(){
+  if(chaosSystem){ scene.remove(chaosSystem); chaosSystem = null; }
+  const sys = makePointCloud(150000);
+  scene.add(sys);
+  chaosSystem = sys;
+  document.getElementById('stats').textContent = '0 pts';
+}
+
+function stepChaos(batch = 30){
+  const sys = chaosSystem;
+  if(!sys || chaosMaps.length === 0) return;
+  const { maxPts, positions, colors } = sys.userData;
+  let count = sys.userData.count;
+
+  for(let b = 0; b < batch; b++){
+    const map = chaosMaps[Math.floor(Math.random() * chaosMaps.length)];
+    chaosState = map(chaosState);
+    const A = Math.max(0, Math.min(1, chaosState[0]));
+    const B = Math.max(0, Math.min(1, chaosState[1]));
+    const { x, y, z, r } = computeOutputBloch(A, B, currentPhi, +currentOp);
+    if(count < maxPts){
+      positions[count*3]   = x;
+      positions[count*3+1] = z;  // swap Y↔Z for THREE.js vertical
+      positions[count*3+2] = y;
+      const [cr, cg, cb] = viridis(r);
+      colors[count*3]   = cr / 255;
+      colors[count*3+1] = cg / 255;
+      colors[count*3+2] = cb / 255;
+      count++;
+    }
+  }
+  sys.userData.count = count;
+  sys.geometry.attributes.position.needsUpdate = true;
+  sys.geometry.attributes.color.needsUpdate = true;
+  sys.geometry.setDrawRange(0, count);
+  document.getElementById('stats').textContent = `${count.toLocaleString()} pts`;
+}
+
+// ── Mode switching ──
+function updateMode(){
+  const isTopo = currentMode === 'topo';
+  const isChaos = currentMode === 'chaos';
+  if(topoSystem) topoSystem.visible = isTopo;
+  if(chaosSystem) chaosSystem.visible = isChaos;
+  document.getElementById('modeLabel').textContent = `mode: ${isTopo ? 'Topography' : 'Chaos'}`;
+  document.getElementById('modeTopo').className = isTopo ? 'active' : '';
+  document.getElementById('modeChaos').className = isChaos ? 'active' : '';
+}
+
+function switchOperator(opKey){
+  currentOp = opKey;
+  const tile = TILES[opKey];
+  document.getElementById('opName').textContent = tile.name;
+  chaosMaps = constrainOn ? buildBoolMaps(tile.bits) : ALL_MAPS;
+  rebuildTopography();
+  createChaosSystem();
+  chaosState = [Math.random(), Math.random()];
+  document.getElementById('stats').textContent = '0 pts';
+  updateMode();
+  for(let i = 0; i < 1000; i++) stepChaos(1);
+}
+
+function rebuildCurrentView(){
+  chaosMaps = constrainOn ? buildBoolMaps(TILES[currentOp].bits) : ALL_MAPS;
+  rebuildTopography();
+  createChaosSystem();
+  chaosState = [Math.random(), Math.random()];
+  document.getElementById('stats').textContent = '0 pts';
+  updateMode();
+}
+
+// ── UI ──
+const sel = document.getElementById('opSelect');
+KEYS.forEach(k => {
+  const o = document.createElement('option');
+  o.value = k; o.textContent = `${k.padStart(2)} · ${TILES[k].name}`;
+  sel.appendChild(o);
+});
+sel.value = '6';
+sel.addEventListener('change', () => switchOperator(sel.value));
+
+document.getElementById('modeTopo').addEventListener('click', () => {
+  currentMode = 'topo'; updateMode();
+});
+document.getElementById('modeChaos').addEventListener('click', () => {
+  currentMode = 'chaos'; updateMode();
+});
+
+document.getElementById('phaseSlider').addEventListener('input', e => {
+  currentPhi = parseInt(e.target.value) / 100;
+  document.getElementById('phaseLabel').textContent = currentPhi.toFixed(2);
+  rebuildCurrentView();
+});
+
+document.getElementById('resSlider').addEventListener('input', e => {
+  topoRes = parseInt(e.target.value);
+  if(currentMode === 'topo') rebuildTopography();
+});
+
+document.getElementById('speedSlider').addEventListener('input', e => {
+  speed = parseInt(e.target.value);
+});
+
+document.getElementById('sizeSlider').addEventListener('input', e => {
+  const s = parseFloat(e.target.value) * 0.01;
+  if(topoSystem) topoSystem.material.size = s;
+  if(chaosSystem) chaosSystem.material.size = s;
+});
+
+document.getElementById('constrainBtn').addEventListener('click', () => {
+  constrainOn = !constrainOn;
+  document.getElementById('constrainBtn').textContent = constrainOn ? '⊜ Constrained' : '⊜ All maps';
+  document.getElementById('constrainBtn').className = constrainOn ? 'active' : '';
+  chaosMaps = constrainOn ? buildBoolMaps(TILES[currentOp].bits) : ALL_MAPS;
+  if(currentMode === 'chaos'){
+    createChaosSystem();
+    chaosState = [Math.random(), Math.random()];
+    for(let i = 0; i < 1000; i++) stepChaos(1);
+  }
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  chaosState = [Math.random(), Math.random()];
+  if(chaosSystem){
+    chaosSystem.userData.count = 0;
+    chaosSystem.geometry.setDrawRange(0, 0);
+    chaosSystem.geometry.attributes.position.needsUpdate = true;
+    chaosSystem.geometry.attributes.color.needsUpdate = true;
+  }
+  document.getElementById('stats').textContent = '0 pts';
+  orbit.autoRotate = true;
+});
+
+window.addEventListener('resize', () => {
+  const aspect = innerWidth / innerHeight;
+  camera.left = -frustumH * aspect;
+  camera.right = frustumH * aspect;
+  camera.top = frustumH;
+  camera.bottom = -frustumH;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  labelRenderer.setSize(innerWidth, innerHeight);
+});
+
+// ── Init ──
+switchOperator('6');
+
+// ── Animate ──
+let lastTime = 0;
+function animate(time){
+  requestAnimationFrame(animate);
+  const dt = time - lastTime;
+  lastTime = time;
+  if(running && currentMode === 'chaos'){
+    const n = Math.round(speed * (dt / 16));
+    stepChaos(Math.max(1, n));
+  }
+  orbit.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

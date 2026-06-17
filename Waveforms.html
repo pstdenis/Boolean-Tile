@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>16 Tones: Logical Waveform Explorer</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d0d12;color:#c8c8d0;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px;user-select:none}
+h1{font-size:22px;font-weight:300;letter-spacing:.15em;color:#8888a0;margin-bottom:2px;text-transform:uppercase}
+.subtitle{font-size:12px;color:#555570;margin-bottom:18px;letter-spacing:.1em}
+.subtitle span{padding:2px 8px;border-radius:3px;font-size:10px;margin:0 2px}
+.subtitle .c{background:#1a2e1a;color:#5a9a5a;border:1px solid #2a4a2a}
+.subtitle .i{background:#2e1a1a;color:#9a5a5a;border:1px solid #4a2a2a}
+.controls{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center;margin-bottom:14px;background:#14141c;border:1px solid #22223a;border-radius:8px;padding:10px 18px}
+.ctrl-group{display:flex;align-items:center;gap:6px}
+.ctrl-group label{font-size:11px;color:#707090;min-width:30px}
+.ctrl-group input[type=range]{width:100px;height:4px;-webkit-appearance:none;background:#22223a;border-radius:2px;outline:none}
+.ctrl-group input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:#5566aa;border-radius:50%;cursor:pointer;transition:.15s}
+.ctrl-group input[type=range]::-webkit-slider-thumb:hover{background:#7788cc;transform:scale(1.15)}
+.ctrl-group .val{font-size:12px;color:#a0a0b8;min-width:28px;text-align:right;font-variant-numeric:tabular-nums}
+.btn{padding:5px 12px;border-radius:4px;border:1px solid #333350;background:#1a1a28;color:#9090b0;cursor:pointer;font-size:11px;transition:.15s}
+.btn:hover{background:#2a2a40;border-color:#444470;color:#b0b0d0}
+.btn.primary{background:#334488;border-color:#4455aa;color:#d0d8f0}
+.btn.primary:hover{background:#4455aa;border-color:#5566bb}
+.btn.danger{background:#662244;border-color:#883366;color:#e0a0b8}
+.btn.danger:hover{background:#883366;border-color:#aa4488}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;width:100%;max-width:680px;margin-bottom:10px}
+.tile{border:1px solid #22223a;border-radius:5px;padding:5px 4px 4px;background:#14141c;cursor:pointer;transition:.15s;text-align:center;position:relative}
+.tile:hover{border-color:#444470;background:#1a1a28}
+.tile.active{border-color:#5566bb;background:#1a2240;box-shadow:0 0 12px rgba(68,85,170,.25)}
+.tile.playing{border-color:#66aa66;background:#1a2a1a;box-shadow:0 0 12px rgba(68,170,68,.2)}
+.tile.silent{opacity:.3;pointer-events:none}
+.tile .name{font-size:10px;font-weight:500;color:#8888a8;line-height:1.2}
+.tile .idx{font-size:8px;color:#444460}
+.tile .pat{font-size:9px;font-family:'Courier New',monospace;color:#606080;margin-top:2px;letter-spacing:1px}
+.tile .freq-label{font-size:8px;color:#555560;margin-top:1px}
+.tile .badge{position:absolute;top:2px;right:3px;font-size:7px;padding:1px 3px;border-radius:2px;background:#22223a;color:#606080}
+.canvas-row{display:flex;gap:10px;width:100%;max-width:680px;margin-bottom:0}
+.canvas-row canvas{background:#0a0a10;border:1px solid #1e1e30;border-radius:6px;flex:1;min-height:130px}
+.info-bar{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:8px 0 4px;font-size:11px;color:#606080;width:100%;max-width:680px}
+.info-bar span{background:#14141c;padding:3px 10px;border-radius:3px;border:1px solid #1e1e30}
+.info-bar strong{color:#8888b0}
+.key-hint{font-size:9px;color:#404058;margin-top:3px;letter-spacing:.05em}
+.key-hint kbd{background:#14141c;border:1px solid #22223a;border-radius:2px;padding:0 4px;font-family:monospace;color:#606080}
+.playing-indicator{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:3px;vertical-align:middle}
+@media(max-width:600px){.grid{max-width:100%;gap:3px}.tile{padding:3px 2px 3px}.tile .name{font-size:8px}.tile .pat{font-size:7px}.controls{gap:8px;padding:6px 10px}.ctrl-group input[type=range]{width:65px}}
+</style>
+</head>
+<body>
+<h1>&#9835; 16 Tones</h1>
+<div class="subtitle">Bits are Frequencies <span class="c">Conjecture</span> <span class="i">Interpretation</span></div>
+
+<div class="controls" id="controls">
+  <div class="ctrl-group">
+    <label>Bits</label>
+    <input type="range" id="depthSlider" min="4" max="512" value="64" step="1">
+    <span class="val" id="depthVal">64</span>
+  </div>
+  <div class="ctrl-group">
+    <label>Tempo</label>
+    <input type="range" id="tempoSlider" min="20" max="800" value="120" step="1">
+    <span class="val" id="tempoVal">120</span>
+  </div>
+  <div class="ctrl-group">
+    <label>f₁</label>
+    <input type="range" id="f1Slider" min="40" max="2000" value="660" step="1">
+    <span class="val" id="f1Val">660</span>
+  </div>
+  <div class="ctrl-group">
+    <label>f₀</label>
+    <input type="range" id="f0Slider" min="40" max="2000" value="220" step="1">
+    <span class="val" id="f0Val">220</span>
+  </div>
+  <div class="ctrl-group">
+    <label>Vol</label>
+    <input type="range" id="volSlider" min="0" max="100" value="60" step="1">
+    <span class="val" id="volVal">60</span>
+  </div>
+  <button class="btn primary" id="playAllBtn">&#9654; All</button>
+  <button class="btn danger" id="stopAllBtn">&#9632; Stop</button>
+</div>
+
+<div class="grid" id="tileGrid"></div>
+
+<div class="canvas-row">
+  <canvas id="waveCanvas" height="140"></canvas>
+  <canvas id="specCanvas" height="140"></canvas>
+</div>
+
+<div class="info-bar" id="infoBar">
+  <span id="infoPattern">Pattern: <strong>—</strong></span>
+  <span id="infoOrbit">Orbit: <strong>—</strong></span>
+  <span id="infoFreqs">f₁/f₀: <strong>—</strong></span>
+  <span id="infoLoop">Loop: <strong>—</strong></span>
+  <span id="infoPlaying">Playing: <strong>0</strong></span>
+</div>
+
+<div class="key-hint">
+  <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd> <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd> <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd> &middot; <kbd>Space</kbd> stop
+</div>
+
+<script>
+const TILES = [
+  {idx:0, name:'FALSE', sym:'&#8869;',   pattern:null},
+  {idx:1, name:'AND',   sym:'&#8743;',   pattern:null},
+  {idx:2, name:'A&#8743;&#172;B', sym:'&#8892;',   pattern:null},
+  {idx:3, name:'P',     sym:'&#960;',    pattern:null},
+  {idx:4, name:'&#172;A&#8743;B', sym:'&#8893;',   pattern:null},
+  {idx:5, name:'Q',     sym:'&#952;',    pattern:null},
+  {idx:6, name:'XOR',   sym:'&#8853;',   pattern:null},
+  {idx:7, name:'OR',    sym:'&#8744;',   pattern:null},
+  {idx:8, name:'NOR',   sym:'&#8595;',   pattern:null},
+  {idx:9, name:'XNOR',  sym:'&#8857;',   pattern:null},
+  {idx:10,name:'&#172;B', sym:'&#172;q',  pattern:null},
+  {idx:11,name:'B&#8594;A', sym:'&#8594;',   pattern:null},
+  {idx:12,name:'&#172;P', sym:'&#172;p',  pattern:null},
+  {idx:13,name:'A&#8594;B', sym:'&#8592;',   pattern:null},
+  {idx:14,name:'NAND',  sym:'&#8593;',   pattern:null},
+  {idx:15,name:'TRUE',  sym:'&#8868;',   pattern:null}
+];
+
+const BOOL = {
+  FALSE:(a,b)=>0, AND:(a,b)=>a&b, A_NB:(a,b)=>a&~b, P:(a,b)=>a,
+  NA_B:(a,b)=>~a&b, Q:(a,b)=>b, XOR:(a,b)=>a^b, OR:(a,b)=>a|b,
+  NOR:(a,b)=>~(a|b)&1, XNOR:(a,b)=>~(a^b)&1, NB:(a,b)=>~b&1,
+  B_A:(a,b)=>(~b|a)&1, NP:(a,b)=>~a&1, A_B:(a,b)=>(~a|b)&1,
+  NAND:(a,b)=>~(a&b)&1, TRUE:(a,b)=>1
+};
+const FN = [BOOL.FALSE,BOOL.AND,BOOL.A_NB,BOOL.P,BOOL.NA_B,BOOL.Q,BOOL.XOR,BOOL.OR,
+            BOOL.NOR,BOOL.XNOR,BOOL.NB,BOOL.B_A,BOOL.NP,BOOL.A_B,BOOL.NAND,BOOL.TRUE];
+
+const tileGrid = document.getElementById('tileGrid');
+const waveCanvas = document.getElementById('waveCanvas');
+const specCanvas = document.getElementById('specCanvas');
+const waveCtx = waveCanvas.getContext('2d');
+const specCtx = specCanvas.getContext('2d');
+const depthSlider = document.getElementById('depthSlider');
+const tempoSlider = document.getElementById('tempoSlider');
+const f1Slider = document.getElementById('f1Slider');
+const f0Slider = document.getElementById('f0Slider');
+const volSlider = document.getElementById('volSlider');
+const depthVal = document.getElementById('depthVal');
+const tempoVal = document.getElementById('tempoVal');
+const f1Val = document.getElementById('f1Val');
+const f0Val = document.getElementById('f0Val');
+const volVal = document.getElementById('volVal');
+const playAllBtn = document.getElementById('playAllBtn');
+const stopAllBtn = document.getElementById('stopAllBtn');
+const infoPattern = document.getElementById('infoPattern');
+const infoFreqs = document.getElementById('infoFreqs');
+const infoLoop = document.getElementById('infoLoop');
+const infoPlaying = document.getElementById('infoPlaying');
+const infoOrbit = document.getElementById('infoOrbit');
+
+const ORBITS = {
+  0:{label:'Constant', size:1, tiles:'FALSE'},
+  1:{label:'Constant', size:1, tiles:'TRUE'},
+  2:{label:'Period-2 projection', size:2, tiles:'P, ¬P'},
+  3:{label:'Period-4 checkerboard', size:4, tiles:'Q, XNOR, ¬Q, XOR'},
+  4:{label:'Period-4 TEE', size:4, tiles:'AND, NOR, A∧¬B, ¬A∧B'},
+  5:{label:'Period-4 ETT', size:4, tiles:'A→B, B→A, NAND, OR'}
+};
+const TILE_ORBIT = [0,4,4,2,4,3,3,5,4,3,3,5,2,5,5,1];
+
+let audioCtx = null;
+let masterGain = null;
+let analyser = null;
+const sources = {};
+
+let currentDepth = 64;
+let currentTempo = 120;
+let currentF1 = 660;
+let currentF0 = 220;
+let currentVol = 0.6;
+let selectedTile = null;
+let playingCount = 0;
+
+function makeBits(depth) {
+  const p = new Uint8Array(depth);
+  const q = new Uint8Array(depth);
+  for (let i=0;i<depth;i++) {
+    p[i] = (i%2===0)?1:0;
+    q[i] = ((i%4)===0||(i%4)===1)?1:0;
+  }
+  return [p,q];
+}
+
+function computePattern(tileIdx, depth) {
+  const [p,q] = makeBits(depth);
+  const fn = FN[tileIdx];
+  const out = new Uint8Array(depth);
+  for (let i=0;i<depth;i++) out[i] = fn(p[i],q[i]);
+  return out;
+}
+
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = currentVol;
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    masterGain.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  }
+  if (audioCtx.state==='suspended') audioCtx.resume();
+}
+
+function makeBuffer(tileIdx, depth, tempo, f1, f0) {
+  const pat = computePattern(tileIdx, depth);
+  const sr = audioCtx.sampleRate;
+  const samplesPerBit = Math.round(sr / tempo);
+  const totalSamples = depth * samplesPerBit;
+  const buf = audioCtx.createBuffer(1, totalSamples, sr);
+  const ch = buf.getChannelData(0);
+
+  for (let i=0;i<depth;i++) {
+    const freq = pat[i]===1 ? f1 : f0;
+    const offset = i*samplesPerBit;
+    for (let j=0;j<samplesPerBit;j++) {
+      const t = j / sr;
+      ch[offset+j] = Math.sin(2*Math.PI * freq * t);
+    }
+  }
+  return {buffer:buf, pattern:pat};
+}
+
+function playTile(tileIdx) {
+  if (tileIdx===0||tileIdx===15) return;
+  ensureAudio();
+  if (sources[tileIdx]) stopTile(tileIdx);
+
+  const {buffer,pattern} = makeBuffer(tileIdx, currentDepth, currentTempo, currentF1, currentF0);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buffer;
+  src.loop = true;
+  const gain = audioCtx.createGain();
+  gain.gain.value = 1.0;
+  src.connect(gain);
+  gain.connect(masterGain);
+  src.start();
+
+  sources[tileIdx] = {source:src, gain:gain, pattern:pattern};
+  updateTileUI(tileIdx, true);
+  updatePlayingCount(1);
+}
+
+function stopTile(tileIdx) {
+  if (!sources[tileIdx]) return;
+  try { sources[tileIdx].source.stop(); } catch(e) {}
+  try { sources[tileIdx].source.disconnect(); } catch(e) {}
+  try { sources[tileIdx].gain.disconnect(); } catch(e) {}
+  delete sources[tileIdx];
+  updateTileUI(tileIdx, false);
+  updatePlayingCount(-1);
+}
+
+function toggleTile(tileIdx) {
+  if (tileIdx===0||tileIdx===15) {
+    selectedTile = tileIdx;
+    updateSelection();
+    updateInfo();
+    drawAll();
+    return;
+  }
+  if (sources[tileIdx]) { stopTile(tileIdx); return; }
+  playTile(tileIdx);
+  selectedTile = tileIdx;
+  updateSelection();
+  updateInfo();
+  drawAll();
+}
+
+function playAll() {
+  ensureAudio();
+  for (let i=0;i<16;i++) {
+    if (i===0||i===15) continue;
+    if (!sources[i]) playTile(i);
+  }
+}
+
+function stopAll() {
+  for (let i=0;i<16;i++) { if (sources[i]) stopTile(i); }
+}
+
+function rebuildActiveTiles() {
+  const active = Object.keys(sources).map(Number);
+  for (const i of active) { stopTile(i); playTile(i); }
+}
+
+function updatePlayingCount(delta) {
+  playingCount += delta;
+  if (playingCount<0) playingCount=0;
+  infoPlaying.innerHTML = `Playing: <strong>${playingCount}</strong>`;
+}
+
+function updateTileUI(idx, playing) {
+  const el = tileGrid.children[idx];
+  if (!el) return;
+  el.classList.toggle('playing', playing);
+}
+
+function updateSelection() {
+  const els = tileGrid.querySelectorAll('.tile');
+  els.forEach((el,i)=>el.classList.toggle('active', i===selectedTile));
+}
+
+function updateInfo() {
+  if (selectedTile===null) {
+    infoPattern.innerHTML = 'Pattern: <strong>—</strong>';
+    infoOrbit.innerHTML = 'Orbit: <strong>—</strong>';
+    infoFreqs.innerHTML = 'f&#8321;/f&#8320;: <strong>—</strong>';
+    infoLoop.innerHTML = 'Loop: <strong>—</strong>';
+    return;
+  }
+  if (selectedTile===0||selectedTile===15) {
+    infoPattern.innerHTML = 'Pattern: <strong>DC</strong>';
+    infoOrbit.innerHTML = `Orbit: <strong>${ORBITS[TILE_ORBIT[selectedTile]].label}</strong>`;
+    infoFreqs.innerHTML = 'f&#8321;/f&#8320;: <strong>silent</strong>';
+    infoLoop.innerHTML = 'Loop: <strong>—</strong>';
+    return;
+  }
+  const pat = computePattern(selectedTile, currentDepth);
+  const ones = pat.reduce((s,v)=>s+v,0);
+  const ratio = ones/(pat.length-ones||1);
+  const loopDur = (currentDepth/currentTempo).toFixed(3);
+  const oi = TILE_ORBIT[selectedTile];
+  const orb = ORBITS[oi];
+  infoPattern.innerHTML = `Pattern: <strong>${ones} ones / ${pat.length-ones} zeros</strong>`;
+  infoOrbit.innerHTML = `Orbit: <strong>${orb.label} (period ${orb.size})</strong>`;
+  infoFreqs.innerHTML = `f&#8321;/f&#8320;: <strong>${currentF1}/${currentF0} Hz &nbsp;ratio ${ratio.toFixed(2)}</strong>`;
+  infoLoop.innerHTML = `Loop: <strong>${loopDur}s</strong>`;
+}
+
+function drawAll() {
+  drawWaveform();
+  drawSpectrum();
+}
+
+function drawWaveform() {
+  const dpr = window.devicePixelRatio||1;
+  const cw = waveCanvas.clientWidth;
+  const ch = waveCanvas.clientHeight;
+  const nw = Math.round(cw*dpr), nh = Math.round(ch*dpr);
+  if (waveCanvas.width!==nw) waveCanvas.width=nw;
+  if (waveCanvas.height!==nh) waveCanvas.height=nh;
+  waveCtx.setTransform(dpr,0,0,dpr,0,0);
+
+  waveCtx.fillStyle = '#0a0a10';
+  waveCtx.fillRect(0,0,cw,ch);
+
+  if (selectedTile===null||selectedTile===0||selectedTile===15) {
+    waveCtx.fillStyle = '#2a2a38';
+    waveCtx.font = '13px sans-serif';
+    waveCtx.textAlign = 'center';
+    waveCtx.fillText(selectedTile===0?'FALSE — silent':'TRUE — silent', cw/2, ch/2+4);
+    return;
+  }
+
+  const pat = computePattern(selectedTile, currentDepth);
+  const sr = audioCtx ? audioCtx.sampleRate : 44100;
+  const spb = Math.round(sr/currentTempo);
+  const dispSamples = Math.min(spb*pat.length, cw*2);
+  const stepX = cw / (dispSamples/spb*pat.length>cw*2 ? cw*2 : dispSamples);
+  const actualDisp = Math.min(dispSamples, spb*8);
+  const pad = 12;
+  const drawH = ch - pad*2;
+
+  // choose f1,f0 for the selected tile
+  const f1 = currentF1, f0 = currentF0;
+
+  waveCtx.strokeStyle = '#5566aa';
+  waveCtx.lineWidth = 1.2;
+  waveCtx.beginPath();
+  let prevX=-1, prevY;
+  for (let s=0;s<actualDisp;s++) {
+    const i = Math.floor(s/spb);
+    if (i>=pat.length) break;
+    const freq = pat[i]===1 ? f1 : f0;
+    const t = (s%spb)/sr;
+    const val = Math.sin(2*Math.PI*freq*t);
+    const y = pad + drawH/2 - val*(drawH/2-4);
+    const x = (s/actualDisp)*cw;
+    if (x!==prevX) { prevX=x; prevY=y; waveCtx.moveTo(x,y); }
+    else waveCtx.lineTo(x,y);
+  }
+  waveCtx.stroke();
+
+  // zero line
+  waveCtx.strokeStyle = '#1e1e30';
+  waveCtx.lineWidth = 1;
+  waveCtx.setLineDash([3,6]);
+  waveCtx.beginPath();
+  waveCtx.moveTo(0, pad+drawH/2);
+  waveCtx.lineTo(cw, pad+drawH/2);
+  waveCtx.stroke();
+  waveCtx.setLineDash([]);
+
+  // bit boundary markers + frequency labels
+  waveCtx.fillStyle = '#3a3a50';
+  waveCtx.font = '8px sans-serif';
+  waveCtx.textAlign = 'center';
+  const bitsToShow = Math.min(pat.length, Math.ceil(actualDisp/spb));
+  for (let b=0;b<bitsToShow;b++) {
+    const x = (b*spb/actualDisp)*cw;
+    const fLabel = pat[b]===1 ? f1 : f0;
+    waveCtx.fillText(fLabel+'Hz', x+((spb/actualDisp)*cw)/2, ch-3);
+  }
+
+  waveCtx.fillStyle = '#606080';
+  waveCtx.font = '9px sans-serif';
+  waveCtx.textAlign = 'left';
+  waveCtx.fillText(` ${TILES[selectedTile].name} · ${actualDisp/spb>>0} bits shown · f₁=${f1} f₀=${f0}`, pad+3, pad+10);
+}
+
+function drawSpectrum() {
+  const dpr = window.devicePixelRatio||1;
+  const cw = specCanvas.clientWidth;
+  const ch = specCanvas.clientHeight;
+  const nw = Math.round(cw*dpr), nh = Math.round(ch*dpr);
+  if (specCanvas.width!==nw) specCanvas.width=nw;
+  if (specCanvas.height!==nh) specCanvas.height=nh;
+  specCtx.setTransform(dpr,0,0,dpr,0,0);
+
+  specCtx.fillStyle = '#0a0a10';
+  specCtx.fillRect(0,0,cw,ch);
+
+  if (playingCount===0) {
+    specCtx.fillStyle = '#2a2a38';
+    specCtx.font = '13px sans-serif';
+    specCtx.textAlign = 'center';
+    specCtx.fillText('Play to see spectrum', cw/2, ch/2+4);
+    return;
+  }
+
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+  const bins = Math.min(data.length, Math.floor(cw/2));
+  const barW = cw/bins;
+  specCtx.fillStyle = '#5566aa';
+  let peak=0, peakIdx=0;
+  for (let i=0;i<bins;i++) {
+    const hgt = (data[i]/255)*ch;
+    if (data[i]>peak) { peak=data[i]; peakIdx=i; }
+    specCtx.fillRect(i*barW, ch-hgt, Math.max(barW-1,1), hgt);
+  }
+
+  // peak label
+  const sr = audioCtx ? audioCtx.sampleRate : 44100;
+  const nyquist = sr/2;
+  if (peak>10) {
+    const peakFreq = (peakIdx/bins)*nyquist;
+    specCtx.fillStyle = '#8888b0';
+    specCtx.font = '9px sans-serif';
+    specCtx.textAlign = 'center';
+    specCtx.fillText(peakFreq>=1000?(peakFreq/1000).toFixed(1)+'kHz':peakFreq.toFixed(0)+'Hz', cw/2, 14);
+  }
+
+  // freq axis
+  specCtx.fillStyle = '#3a3a50';
+  specCtx.font = '7px sans-serif';
+  specCtx.textAlign = 'left';
+  for (let i=0;i<=4;i++) {
+    const freq = nyquist*i/4;
+    if (freq<20) continue;
+    const x = (i/4)*cw;
+    specCtx.fillText(freq>=1000?(freq/1000).toFixed(1)+'k':freq.toFixed(0), x+1, ch-2);
+  }
+  specCtx.fillStyle = '#555570';
+  specCtx.font = '8px sans-serif';
+  specCtx.textAlign = 'right';
+  specCtx.fillText('Hz', cw-3, ch-2);
+}
+
+function animate() {
+  if (playingCount>0) drawSpectrum();
+  requestAnimationFrame(animate);
+}
+
+function buildGrid() {
+  tileGrid.innerHTML = '';
+  const keyMap = ['1','2','3','4','q','w','e','r','a','s','d','f','z','x','c','v'];
+  for (let i=0;i<16;i++) {
+    const t = TILES[i];
+    const [p,q] = makeBits(16);
+    const fn = FN[i];
+    const pat = new Uint8Array(16);
+    for (let j=0;j<16;j++) pat[j] = fn(p[j],q[j]);
+    const patStr = Array.from(pat.slice(0,8)).join('');
+    const silent = (i===0||i===15);
+
+    const div = document.createElement('div');
+    div.className = 'tile'+(silent?' silent':'');
+    div.dataset.idx = i;
+    div.innerHTML = `<div class="badge">${keyMap[i]}</div>
+      <div class="name">${t.sym} ${t.name} <span class="idx">#${i}</span></div>
+      <div class="pat">${patStr}${silent?'':patStr.slice(0,2)}</div>`;
+    div.addEventListener('click', ()=>toggleTile(i));
+    tileGrid.appendChild(div);
+  }
+}
+
+depthSlider.addEventListener('input', ()=>{
+  currentDepth = parseInt(depthSlider.value);
+  depthVal.textContent = currentDepth;
+  rebuildActiveTiles();
+  updateInfo();
+  drawWaveform();
+});
+
+tempoSlider.addEventListener('input', ()=>{
+  currentTempo = parseInt(tempoSlider.value);
+  tempoVal.textContent = currentTempo;
+  rebuildActiveTiles();
+  updateInfo();
+  drawWaveform();
+});
+
+f1Slider.addEventListener('input', ()=>{
+  currentF1 = parseInt(f1Slider.value);
+  f1Val.textContent = currentF1;
+  rebuildActiveTiles();
+  updateInfo();
+  drawWaveform();
+});
+
+f0Slider.addEventListener('input', ()=>{
+  currentF0 = parseInt(f0Slider.value);
+  f0Val.textContent = currentF0;
+  rebuildActiveTiles();
+  updateInfo();
+  drawWaveform();
+});
+
+volSlider.addEventListener('input', ()=>{
+  currentVol = parseInt(volSlider.value)/100;
+  volVal.textContent = parseInt(volSlider.value);
+  if (masterGain) masterGain.gain.value = currentVol;
+});
+
+playAllBtn.addEventListener('click', playAll);
+stopAllBtn.addEventListener('click', stopAll);
+
+const keyToIdx = {'1':0,'2':1,'3':2,'4':3,'q':4,'w':5,'e':6,'r':7,
+  'a':8,'s':9,'d':10,'f':11,'z':12,'x':13,'c':14,'v':15};
+document.addEventListener('keydown', (e)=>{
+  const key = e.key.toLowerCase();
+  if (key===' ') { e.preventDefault(); stopAll(); return; }
+  if (key in keyToIdx) toggleTile(keyToIdx[key]);
+});
+
+buildGrid();
+selectedTile = 3;
+updateSelection();
+updateInfo();
+drawAll();
+animate();
+
+window.addEventListener('resize', ()=>{ drawWaveform(); if (!playingCount) drawSpectrum(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Boolean tiles · chaos game on the Bloch sphere</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a12;color:#ccc;font-family:system-ui,sans-serif;overflow:hidden}
+  canvas{display:block}
+  #info{
+    position:absolute;top:16px;left:50%;transform:translateX(-50%);
+    background:rgba(10,10,18,0.82);padding:10px 22px;border-radius:8px;
+    font-size:13px;backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);
+    pointer-events:none;text-align:center;
+  }
+  #info strong{color:#6cf}
+  #info .sub{font-size:11px;color:#888;margin-top:2px}
+  #controls{
+    position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+    background:rgba(10,10,18,0.82);padding:10px 20px;border-radius:8px;
+    backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,0.08);
+    display:flex;gap:14px;align-items:center;font-size:12px;flex-wrap:wrap;justify-content:center;
+  }
+  #controls label{display:flex;align-items:center;gap:6px;color:#aaa}
+  #controls input[type=range]{width:90px;accent-color:#6cf}
+  #controls select{
+    background:#1a1a2e;border:1px solid rgba(255,255,255,0.12);color:#ccc;
+    padding:4px 8px;border-radius:4px;font-size:12px;cursor:pointer;
+  }
+  #controls button{
+    background:#2a2a3e;border:1px solid rgba(255,255,255,0.1);color:#ccc;
+    padding:4px 14px;border-radius:4px;cursor:pointer;font-size:12px;
+  }
+  #controls button:hover{background:#3a3a5e}
+  #stats{color:#6cf;min-width:80px;text-align:right;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+
+<div id="info">
+  <strong id="opName">XOR</strong> · Sierpiński tetrahedron on the Bloch sphere
+  <div class="sub" id="opDesc">chaos game · truth-table vertices → quantum tetrahedron (SIC-POVM)</div>
+</div>
+
+<div id="controls">
+  <label>tile <select id="opSelect"></select></label>
+  <label>speed <input type="range" id="speedSlider" min="1" max="30" value="10"></label>
+  <label>size <input type="range" id="sizeSlider" min="0.3" max="3" value="1.2" step="0.1"></label>
+  <button id="resetBtn">⟳ reset</button>
+  <span id="stats">0 pts</span>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ── 16 Boolean tile truth tables ──
+const TILES = {
+  '0':   {name:'FALSE',  bits:[0,0,0,0], color:0x444444},
+  '1':   {name:'AND',    bits:[0,0,0,1], color:0x44aaff},
+  '2':   {name:'A∧¬B',   bits:[0,0,1,0], color:0x66cc88},
+  '3':   {name:'A',      bits:[0,0,1,1], color:0x88dd44},
+  '4':   {name:'¬A∧B',   bits:[0,1,0,0], color:0xccaa44},
+  '5':   {name:'B',      bits:[0,1,0,1], color:0xdd8844},
+  '6':   {name:'XOR',    bits:[0,1,1,0], color:0x88ddff},
+  '7':   {name:'OR',     bits:[0,1,1,1], color:0x66dd88},
+  '8':   {name:'NOR',    bits:[1,0,0,0], color:0xff6644},
+  '9':   {name:'XNOR',   bits:[1,0,0,1], color:0xff8844},
+  '10':  {name:'¬B',     bits:[1,0,1,0], color:0xcc66ff},
+  '11':  {name:'A∨¬B',   bits:[1,0,1,1], color:0xaa88ff},
+  '12':  {name:'¬A',     bits:[1,1,0,0], color:0x88aaff},
+  '13':  {name:'¬A∨B',   bits:[1,1,0,1], color:0x66ccff},
+  '14':  {name:'NAND',   bits:[1,1,1,0], color:0xff6644},
+  '15':  {name:'TRUE',   bits:[1,1,1,1], color:0xffffff},
+};
+const TILE_KEYS = Object.keys(TILES);
+
+// ── Scene setup ──
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(3.2, 2.4, 4.8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x0a0a12);
+document.body.prepend(renderer.domElement);
+
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(window.innerWidth, window.innerHeight);
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.body.prepend(labelRenderer.domElement);
+
+const orbitControls = new OrbitControls(camera, renderer.domElement);
+orbitControls.enableDamping = true;
+orbitControls.dampingFactor = 0.08;
+orbitControls.autoRotate = true;
+orbitControls.autoRotateSpeed = 2.0;
+
+// ── Dynamic groups ──
+let tetGroup = new THREE.Group();
+let pointSystem = null;
+let currentOp = '6'; // XOR default
+
+// ── Build vertices from truth table ──
+function getVertices(opKey){
+  const t = TILES[opKey];
+  const pts = [
+    [0, 0, t.bits[0]],
+    [0, 1, t.bits[1]],
+    [1, 0, t.bits[2]],
+    [1, 1, t.bits[3]],
+  ];
+  // center at origin (subtract 0.5 from each)
+  const centered = pts.map(p => [p[0]-0.5, p[1]-0.5, p[2]-0.5]);
+  // normalize to unit sphere (handle degenerate case for FALSE/TRUE)
+  const norms = centered.map(p => Math.sqrt(p[0]**2 + p[1]**2 + p[2]**2));
+  const hasZero = norms.some(n => n < 0.001);
+  if(hasZero){
+    // degenerate: keep as-is (some points at origin)
+    return centered.map((p,i) => new THREE.Vector3(p[0], p[1], p[2]));
+  }
+  return centered.map((p,i) => {
+    const s = 1 / norms[i];
+    return new THREE.Vector3(p[0]*s, p[1]*s, p[2]*s);
+  });
+}
+
+// ── Build tetrahedron scene objects ──
+function buildTet(opKey){
+  while(tetGroup.children.length) tetGroup.remove(tetGroup.children[0]);
+  scene.remove(tetGroup);
+  tetGroup = new THREE.Group();
+
+  const verts = getVertices(opKey);
+  const tile = TILES[opKey];
+  const c = tile.color;
+
+  // vertices
+  verts.forEach((v, i) => {
+    const g = new THREE.SphereGeometry(0.045, 16, 16);
+    const m = new THREE.MeshBasicMaterial({ color: c });
+    const dot = new THREE.Mesh(g, m);
+    dot.position.copy(v);
+    tetGroup.add(dot);
+
+    const d = document.createElement('div');
+    d.textContent = `v${i}`;
+    d.style.color = '#fff';
+    d.style.fontSize = '11px';
+    d.style.background = 'rgba(0,0,0,0.5)';
+    d.style.padding = '1px 6px';
+    d.style.borderRadius = '4px';
+    d.style.border = '1px solid rgba(255,255,255,0.1)';
+    const lbl = new CSS2DObject(d);
+    const dir = v.clone();
+    if(dir.length() > 0.001) dir.normalize().multiplyScalar(1.12);
+    else dir.set(0,0,0);
+    lbl.position.copy(dir);
+    tetGroup.add(lbl);
+  });
+
+  // edges
+  const edges = [[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]];
+  const edgeMat = new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.15 });
+  edges.forEach(([i,j]) => {
+    if(verts[i].length() > 0.001 && verts[j].length() > 0.001){
+      const g = new THREE.BufferGeometry().setFromPoints([verts[i], verts[j]]);
+      tetGroup.add(new THREE.Line(g, edgeMat));
+    }
+  });
+
+  scene.add(tetGroup);
+  return verts;
+}
+
+// ── Create point system ──
+function createPointSystem(color){
+  if(pointSystem) scene.remove(pointSystem);
+  const mat = new THREE.PointsMaterial({
+    color: color,
+    size: 0.012,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const geo = new THREE.BufferGeometry();
+  const maxPts = 100000;
+  const pos = new Float32Array(maxPts * 3);
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setDrawRange(0, 0);
+  pointSystem = new THREE.Points(geo, mat);
+  pointSystem.userData = { maxPts, count: 0, positions: pos };
+  scene.add(pointSystem);
+}
+
+function resetChaos(verts){
+  const tile = TILES[currentOp];
+  createPointSystem(tile.color);
+  current = verts[0].clone();
+  // random starting point on sphere
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.acos(2 * Math.random() - 1);
+  current.set(
+    Math.sin(phi) * Math.cos(theta),
+    Math.cos(phi),
+    Math.sin(phi) * Math.sin(theta)
+  );
+  document.getElementById('stats').textContent = '0 pts';
+  orbitControls.autoRotate = true;
+}
+
+// ── Chaos game state ──
+let current = new THREE.Vector3(1, 0, 0);
+let verts = [];
+let running = true;
+let speed = 10;
+
+function step(batch = 30){
+  const ps = pointSystem;
+  if(!ps) return;
+  const { maxPts, positions } = ps.userData;
+  let count = ps.userData.count;
+
+  for(let b = 0; b < batch; b++){
+    const idx = Math.floor(Math.random() * 4);
+    const target = verts[idx];
+    if(target.length() < 0.001) continue; // skip degenerate vertex
+    current.add(target).normalize();
+    if(count < maxPts){
+      positions[count*3] = current.x;
+      positions[count*3+1] = current.y;
+      positions[count*3+2] = current.z;
+      count++;
+    }
+  }
+  ps.userData.count = count;
+  ps.geometry.attributes.position.needsUpdate = true;
+  ps.geometry.setDrawRange(0, count);
+  ps.userData.count = count;
+  document.getElementById('stats').textContent = `${count.toLocaleString()} pts`;
+}
+
+// ── Switch operator ──
+function switchOperator(opKey){
+  currentOp = opKey;
+  const tile = TILES[opKey];
+  document.getElementById('opName').textContent = tile.name;
+  verts = buildTet(opKey);
+  resetChaos(verts);
+}
+
+// ── UI setup ──
+const select = document.getElementById('opSelect');
+TILE_KEYS.forEach(k => {
+  const opt = document.createElement('option');
+  opt.value = k;
+  opt.textContent = `${k.padStart(2)} · ${TILES[k].name}`;
+  select.appendChild(opt);
+});
+select.value = '6';
+select.addEventListener('change', () => {
+  switchOperator(select.value);
+});
+
+document.getElementById('speedSlider').addEventListener('input', e => {
+  speed = parseInt(e.target.value);
+});
+document.getElementById('sizeSlider').addEventListener('input', e => {
+  if(pointSystem) pointSystem.material.size = parseFloat(e.target.value) * 0.01;
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+  resetChaos(verts);
+  // re-seed
+  for(let i = 0; i < 500; i++) step(1);
+});
+
+// ── Window resize ──
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  labelRenderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ── Bloch sphere (static) ──
+{
+  const g = new THREE.SphereGeometry(0.99, 48, 36);
+  const m = new THREE.MeshBasicMaterial({ color: 0x1a2a44, wireframe: true, transparent: true, opacity: 0.2 });
+  scene.add(new THREE.Mesh(g, m));
+  // axes
+  const axLen = 1.35;
+  [new THREE.Vector3(1,0,0), new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1)].forEach(dir => {
+    const arrow = new THREE.ArrowHelper(dir, new THREE.Vector3(0,0,0), axLen, 0x446688, 0.12, 0.06);
+    scene.add(arrow);
+  });
+  // labels
+  function addLabel(text, pos, color='#6688aa'){
+    const d = document.createElement('div');
+    d.textContent = text;
+    d.style.color = color;
+    d.style.fontSize = '13px';
+    d.style.fontWeight = '600';
+    const lbl = new CSS2DObject(d);
+    lbl.position.copy(pos);
+    scene.add(lbl);
+  }
+  addLabel('|0⟩', new THREE.Vector3(0, 1.25, 0), '#6cf');
+  addLabel('|1⟩', new THREE.Vector3(0, -1.25, 0), '#f66');
+  addLabel('X', new THREE.Vector3(1.35, 0, 0));
+  addLabel('Y', new THREE.Vector3(0, 0, 1.35));
+}
+
+// ── Init ──
+switchOperator('6');
+// kickstart
+for(let i = 0; i < 800; i++) step(1);
+
+// ── Animation loop ──
+let lastTime = 0;
+function animate(time){
+  requestAnimationFrame(animate);
+  const dt = time - lastTime;
+  lastTime = time;
+  if(running){
+    const n = Math.round(speed * (dt / 16));
+    step(Math.max(1, n));
+  }
+  orbitControls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

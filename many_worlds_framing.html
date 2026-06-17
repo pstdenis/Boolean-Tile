@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Many-Worlds in the IFS-Bloch System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Source+Code+Pro:wght@400;500&family=Raleway:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})">
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--ink:#1a1a18;--ink-2:#4a4a46;--ink-3:#8a8a84;--paper:#faf9f6;--paper-2:#f4f1eb;--blue:#1e3a6e;--blue-l:#e8eef7;--rule:#d8d4c8;--max:700px}
+html{scroll-behavior:smooth;font-size:16px}
+body{background:var(--paper);color:var(--ink);font-family:'Lora',Georgia,serif;line-height:1.82;padding:2rem 1.5rem 4rem;display:flex;flex-direction:column;align-items:center}
+article{max-width:var(--max);width:100%}
+h1{font-family:'Raleway',sans-serif;font-size:2rem;font-weight:300;line-height:1.22;color:var(--ink);margin:0 0 .3rem;letter-spacing:-.02em}
+.meta{font-family:'Raleway',sans-serif;font-size:12px;color:var(--ink-3);letter-spacing:.05em;display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:2.5rem;padding-bottom:1.5rem;border-bottom:2px solid var(--ink)}
+h2{font-family:'Raleway',sans-serif;font-size:1.3rem;font-weight:600;color:var(--ink);margin:2.5rem 0 .7rem;padding-bottom:.35rem;border-bottom:1.5px solid var(--rule);letter-spacing:-.01em}
+h3{font-family:'Raleway',sans-serif;font-size:1rem;font-weight:600;color:var(--blue);margin:1.8rem 0 .4rem}
+p{margin-bottom:1rem;hyphens:auto}
+ul{margin:.4rem 0 1rem 1.4rem}
+li{margin-bottom:.3rem}
+strong{font-weight:600}
+em{font-style:italic}
+code{font-family:'Source Code Pro',monospace;font-size:.84em;background:var(--paper-2);border:1px solid var(--rule);border-radius:3px;padding:.08em .32em;color:var(--blue)}
+a{color:var(--blue);text-decoration:underline;text-underline-offset:2px}
+a:hover{color:#2a5aae}
+blockquote{border-left:3px solid var(--blue);background:var(--blue-l);padding:.8rem 1.2rem;margin:1.2rem 0;border-radius:0 5px 5px 0;font-style:italic}
+blockquote p{margin:0;font-size:.95rem}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.92rem}
+th{background:var(--blue);color:white;font-family:'Raleway',sans-serif;font-size:11px;font-weight:600;padding:.4rem .6rem;text-align:left}
+td{padding:.35rem .6rem;border-bottom:1px solid var(--rule)}
+tr:nth-child(even){background:var(--paper-2)}
+.note{background:var(--paper-2);border:1px solid var(--rule);border-left:3px solid var(--ink-3);border-radius:0 5px 5px 0;padding:.7rem 1rem;margin:1rem 0;font-size:.93rem;line-height:1.65}
+.note p{margin:0}
+.ref{font-family:'Raleway',sans-serif;font-size:11px;color:var(--ink-3);margin-top:2rem;padding-top:1rem;border-top:1px solid var(--rule)}
+@media(max-width:540px){body{padding:1rem}h1{font-size:1.5rem}}
+</style>
+</head>
+<body>
+<article>
+
+<h1>Many-Worlds and the Universal Wavefunction<br>in the IFS-Bloch System</h1>
+<div class="meta"><span>Paul St. Denis</span><span>June 2026</span><span>Essay</span></div>
+
+<h2>1. Everett's Insight</h2>
+
+<p>In 1957, Hugh Everett III proposed that the wavefunction of a quantum system never collapses. Instead, when a measurement occurs, the wavefunction branches into multiple components, each corresponding to a different outcome. All outcomes exist simultaneously — they merely occupy different branches of the universal wavefunction. The appearance of a single definite outcome is an illusion created by the observer's own branching.</p>
+
+<p>Everett's formulation requires no collapse postulate, no hidden variables, and no privileged measurement apparatus. It is the simplest ontological reading of the Schrödinger equation: the wavefunction is all there is, and it evolves unitarily.</p>
+
+<p>But Everett left open a central question: <strong>what is the geometry of branching?</strong> The wavefunction lives in an abstract Hilbert space. The branching structure — how branches relate, how they separate, how they recombine — has no natural spatial representation.</p>
+
+<p>This essay argues that the IFS-Bloch system provides exactly such a representation.</p>
+
+<h2>2. How the IFS Generates All Worlds</h2>
+
+<p>The Iterated Function System at the heart of this project plays a chaos game on four maps:</p>
+
+$$ (A,B) \to \begin{cases}
+  (A/2,\; B/2) \\
+  (A/2,\; (B+1)/2) \\
+  ((A+1)/2,\; B/2) \\
+  ((A+1)/2,\; (B+1)/2)
+\end{cases} $$
+
+<p>Each step selects one of four contractions, each corresponding to a pair of Boolean bits $(a,b) \in \{0,1\}^2$. An infinite sequence of choices produces an infinite binary string $(a_1b_1)(a_2b_2)(a_3b_3)\cdots$ that converges to a unique point $(A,B) \in [0,1]^2$.</p>
+
+<p><strong>Every such path is a branch.</strong> The full set of all possible paths covers the entire square $[0,1]^2$ — the space of all possible classical input histories. The IFS generates the multiverse of inputs explicitly, as a geometric attractor.</p>
+
+<div class="note">
+<p><strong>Key point.</strong> The IFS does not merely <em>index</em> branches by a parameter — it <em>generates</em> them through a deterministic dynamical process. The branching structure IS the IFS attractor. This is the first concrete geometric model of Everett's branch space.</p>
+</div>
+
+<p>When the IFS is constrained by a truth table (only maps for which $f(A,B)=1$ are selected), the attractor becomes fractal — a Cantor-like set within $[0,1]^2$. This is a branch space with non-uniform measure: some regions of input space never appear because the logical operator excludes them. The constrained IFS is a multiverse with forbidden histories.</p>
+
+<h2>3. From Branch to Quantum State</h2>
+
+<p>Each branch $(A,B)$ defines a separable 2-qubit input state in the obvious way: qubit $A$ encodes the first input, qubit $B$ the second. Using amplitude encoding with a common phase $\phi$:</p>
+
+$$ |\alpha(A)\rangle = \sqrt{1-A}\,|0\rangle + e^{i\phi}\sqrt{A}\,|1\rangle, \qquad
+   |\beta(B)\rangle = \sqrt{1-B}\,|0\rangle + e^{i\phi}\sqrt{B}\,|1\rangle, $$
+$$ |\psi(A,B)\rangle = |\alpha(A)\rangle \otimes |\beta(B)\rangle. $$
+
+<p>At the Boolean corners $(A,B) \in \{0,1\}^2$, this gives the computational basis states $|00\rangle, |01\rangle, |10\rangle, |11\rangle$. In the interior, the qubits are in superposition — the branch's inputs are indefinite, just as Everett's branches carry all possible values simultaneously.</p>
+
+<p>The unitary gate $U_f = H^{\otimes 2} D_f H^{\otimes 2}$ (from §7 of the main document) acts on each branch independently:</p>
+
+$$ |\psi_f(A,B)\rangle = U_f\,|\alpha(A)\rangle|\beta(B)\rangle. $$
+
+<p>The gate receives the entire multiverse of inputs and produces an entire multiverse of outputs, one per branch. The unitary evolution IS the branching process — each input branch maps to exactly one output branch, and the mapping is linear across the ensemble.</p>
+
+<h2>4. The Marginal World-Set</h2>
+
+<p>We cannot observe the full 2-qubit state directly. In practice, we observe only one qubit. The other is inaccessible — it might be in a different实验室, on a different particle, or in a different world.</p>
+
+<p>The reduced density matrix of qubit 1 is obtained by tracing over qubit 2:</p>
+
+$$ \rho_1(A,B) = \operatorname{Tr}_2\bigl(|\psi_f\rangle\langle\psi_f|\bigr). $$
+
+<p>This is the <strong>marginal state</strong> of the A-world-set when the B-worlds are discarded — the quantum analogue of a marginal probability distribution. The Bloch vector of $\rho_1$ is:</p>
+
+$$ \mathbf{r} = (\operatorname{Tr}(\rho_1 X),\; \operatorname{Tr}(\rho_1 Y),\; \operatorname{Tr}(\rho_1 Z)), \qquad r = |\mathbf{r}| \in [0,1]. $$
+
+<table>
+<thead><tr><th>$r$</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>$1$</td><td>The A-world-set is <strong>pure</strong>. The A and B branches are independent — the worlds factor. No information about A is stored in B.</td></tr>
+<tr><td>$0$</td><td>The A-world-set is <strong>maximally mixed</strong>. All information about A is correlated with B. The worlds are maximally entangled.</td></tr>
+<tr><td>$0 &lt; r &lt; 1$</td><td>Partial decoherence. Some information about A has leaked into correlation with B, but not all.</td></tr>
+</tbody>
+</table>
+
+<p>The Bloch ball is the space of marginal world-sets. The surface ($r=1$) is the space of independent branches; the interior ($r<1$) is the space of entangled (inter-world-correlated) branches. The radial coordinate IS the measure of inter-world correlation.</p>
+
+<p>This is the central structural claim of this essay: <strong>the Bloch ball, in this system, IS the space of Everett branches marginalized over one world-track.</strong></p>
+
+<h2>5. What the Visualization Shows</h2>
+
+<p>The companion visualization <code>quantum_bloch.html</code> renders this structure directly. Every point in the 3D scene is one Everett branch $(A,B)$. Its position in the Bloch ball is the marginal state $\rho_1$ of qubit 1 on that branch. Its color encodes the purity $r$ via a viridis colormap: bright yellow for pure ($r=1$), dark purple for maximally mixed ($r=0$).</p>
+
+<ul>
+  <li><strong>Topography mode</strong>: a regular grid over $(A,B)$ samples branch space uniformly, revealing the full image of the input multiverse in the output Bloch ball.</li>
+  <li><strong>Chaos mode</strong>: the IFS chaos game samples $(A,B)$ with the fractal measure $\mu$, showing the branching density. Where points cluster, the IFS concentrates branch weight.</li>
+  <li><strong>Phase slider $\phi$</strong>: changes the phase relation between $|0\rangle$ and $|1\rangle$ in the input states, rotating the basis of world-splitting. The same IFS branches, viewed through a different phase basis, produce different entanglement patterns — illustrating the basis-dependence of the branch decomposition.</li>
+</ul>
+
+<p>For product gates (P, Q, XOR, XNOR, etc.), all branches remain on the sphere surface ($r=1$). The A and B world-sets never entangle — the gate factors into independent operations on each qubit. The image of branch space is confined to the surface of the Bloch ball: a sphere of independent worlds.</p>
+
+<p>For entangling gates (AND, OR, NAND, etc.), branches appear in the interior ($r<1$). These are regions where the gate couples the A and B world-sets into an entangled state. The viridis color reveals the entanglement structure at a glance.</p>
+
+<div class="note">
+<p><strong>Striking example.</strong> The AND gate applied to the branch $(1,1)$ (both inputs True) produces a Bell state — maximally entangled, maximally mixed reduced state ($r=0$). That branch appears at the exact center of the Bloch ball, dark purple. The classical AND function outputs True, but the quantum gate reveals that this "truth" is shared between two worlds in a maximally correlated way.</p>
+</div>
+
+<h2>6. The Universal Wavefunction (Reprise)</h2>
+
+<p>The universal wavefunction of the model — the state that encodes all branches simultaneously — is the integral of all branch states weighted by the IFS measure:</p>
+
+$$ \Psi_f = \int_{[0,1]^2} U_f\,|\alpha(A)\rangle|\beta(B)\rangle \; \mu(dA, dB). $$
+
+<p>This integral is the precise analogue of Everett's universal wavefunction within the model. It sums over all possible classical histories (all IFS paths), each weighted by its branching measure $\mu$, and each contributing a quantum amplitude $U_f|\alpha\beta\rangle$.</p>
+
+<p>This is structurally analogous to a Feynman path integral, with two differences: the "time" parameter is replaced by IFS recursion depth, and the action is replaced by the gate's truth table. The integral does not sum over all paths in configuration space — it sums over all paths in the IFS, which is the space of classical input histories.</p>
+
+<p><strong>This is not the universal wavefunction of a physical quantum system.</strong> It is a mathematical model with the same algebraic structure: a unitary evolution acting on a linear superposition of branches, where each branch corresponds to a definite classical history. The model captures the <em>form</em> of Everett's universal wavefunction without claiming to be a physical theory.</p>
+
+<h2>7. Open Questions</h2>
+
+<ol>
+  <li><strong>Path integral formulation.</strong> Does the integral $\int U_f|\alpha\beta\rangle\,\mu(dA,dB)$ have a known closed form? Can $\mu$ be derived from a path integral over some action?</li>
+
+  <li><strong>Branch counting.</strong> The IFS measure $\mu$ is a probability measure on branch space. Is it related to the Born rule? When the IFS is constrained by a truth table, the measure on allowed branches is fractal — does the fractal dimension correspond to a quantum probability?</li>
+
+  <li><strong>Multiverse of inputs vs. outputs.</strong> The model generates the multiverse of classical inputs $(A,B)$ and maps it to the multiverse of quantum outputs $U_f|AB\rangle$. Are these the same multiverse seen from different angles, or are they distinct? Everett's original formulation would treat them as the same wavefunction at different times.</li>
+
+  <li><strong>Consciousness and branching.</strong> The many-worlds interpretation often raises questions about the role of consciousness in selecting a branch. In this model, the "observer" is simply a point in the Bloch ball — a marginal world-set. Does the purity $r$ correspond to something like the observer's certainty about the outcome?</li>
+
+  <li><strong>Crucible of the 16.</strong> The gate table ($\S7$) produces exactly 8 product gates (pure branch evolution, $r=1$ everywhere) and 8 entangling gates (branch-mixing, $r<1$ somewhere). Is 8/8 the generic split for any complete set of 16 functions on two bits, or is it a consequence of the $H^{\otimes2}$ conjugation structure? Does this ratio generalize to $n$ qubits?</li>
+
+  <li><strong>Phase as basis-of-splitting.</strong> The $\phi$ parameter rotates the basis of the input qubits, changing which branches appear entangled. In many-worlds, the choice of basis is a central interpretational problem. Does $\phi$ here play the role of the "preferred basis" that picks out the robust branches?</li>
+</ol>
+
+<h2>References</h2>
+
+<ul>
+  <li><a href="Boolean%20Tile%20Basis.html">Boolean Tile Basis: Łukasiewicz Logic, Quantum Gates, and Ising Hamiltonians</a> — the main document: gate table ($\S7$), tensor hierarchy ($\S9$), three-domain embedding ($\S9.3$), MV4 failure ($\S4.1$), and the extended many-worlds section ($\S11$).</li>
+  <li><a href="quantum_bloch.html">quantum_bloch.html</a> — the companion visualization: each point = one branch, color = purity.</li>
+  <li>The dynamical extension (§11.7 of the main document): the IFS depth as discrete time, the tent map/Bernoulli shift as the generator of time, and the continuous Hamiltonian interpolation $U_f(t) = \cos(\pi t/2)I - i\sin(\pi t/2)U_f$ between identity and the full gate.</li>
+  <li><a href="native_spherical_chaos.html">native_spherical_chaos.html</a> — the original IFS chaos game on the Bloch sphere (McNaughton surface visualization).</li>
+  <li><a href="circuit_runner.html">circuit_runner.html</a> — quantum circuit evaluator for compound sentences.</li>
+  <li>Everett, H. (1957). "Relative State Formulation of Quantum Mechanics." <em>Reviews of Modern Physics</em>, 29(3), 454–462.</li>
+  <li>DeWitt, B. S. &amp; Graham, N. (1973). <em>The Many-Worlds Interpretation of Quantum Mechanics</em>. Princeton University Press.</li>
+</ul>
+
+<p class="ref">This essay accompanies <em>Boolean Tile Basis: Łukasiewicz Logic, Quantum Gates, and Ising Hamiltonians</em> (June 2026) and is best read alongside §11 of that document.</p>
+
+</article>
+</body>
+</html>

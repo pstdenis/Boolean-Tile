@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boolean Tile Basis</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{background:#faf9f6;color:#1a1a18;font-family:Georgia,'Times New Roman',serif;line-height:1.7;padding:2rem}
+  .layout{max-width:720px;margin:0 auto}
+  h1{font-family:-apple-system,'Segoe UI',sans-serif;font-size:2rem;font-weight:300;margin:2rem 0 .5rem;letter-spacing:-.02em}
+  h2{font-family:-apple-system,'Segoe UI',sans-serif;font-size:1.2rem;font-weight:600;margin:2rem 0 .5rem;color:#1e3a6e}
+  p{margin-bottom:1rem}
+  .sub{color:#6a6a64;font-size:.9rem;margin-bottom:2rem}
+  .card{background:#fff;border:1px solid #ddd8cc;border-radius:6px;padding:1.2rem 1.5rem;margin:1rem 0;transition:border-color .15s}
+  .card:hover{border-color:#4a6fa5}
+  .card h3{margin:0 0 .3rem;font-size:1rem}
+  .card h3 a{color:#1e3a6e;text-decoration:none}
+  .card h3 a:hover{text-decoration:underline}
+  .card .desc{color:#6a6a64;font-size:.88rem;line-height:1.5}
+  .card .tag{display:inline-block;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;padding:1px 7px;border-radius:3px;margin-right:4px;background:#e8eef7;color:#1e3a6e;border:1px solid #c8d8ee}
+  hr{border:none;border-top:1px solid #ddd8cc;margin:2.5rem 0}
+  .foot{font-size:.8rem;color:#8a8a84;text-align:center;margin:3rem 0 1rem}
+  @media(max-width:500px){body{padding:1rem}.card{padding:1rem}}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<h1>Boolean Tile Basis</h1>
+<p class="sub">From truth tables to Ising Hamiltonians — the complete 16-tile system</p>
+
+<div class="card">
+  <h3><a href="Boolean%20Tile%20Basis.html">The Working Paper&nbsp;→</a></h3>
+  <div class="desc">
+    The full manuscript tracing the 16 Boolean tiles through Łukasiewicz logic, IFS fractals, Bloch-sphere quantum states, 2-qubit unitary gates, and Ising spin Hamiltonians (1649 lines, in-browser HTML).
+  </div>
+</div>
+
+<h2>Interactive Visualizations</h2>
+
+<div class="card">
+  <h3><a href="Polar%20IFS.html">Polar IFS&nbsp;→</a></h3>
+  <div class="desc">
+    2D annular-arc visualization of the IFS attractors. Each tile maps a 2D grid to concentric annular arcs with greyscale = accumulator value. Depth slider included. <span class="tag">2D</span> <span class="tag">IFS</span> <span class="tag">Chaos Game</span>
+  </div>
+</div>
+
+<div class="card">
+  <h3><a href="Bloch.html">Bloch Sphere (3D)&nbsp;→</a></h3>
+  <div class="desc">
+    3D spherical visualization of the 16 tiles using Three.js. Each tile's IFS accumulator maps to spherical coordinates: θ from row, φ from column, radius R = accumulator value. OrbitControls, auto-rotate, synchronized cross-tile camera. <span class="tag">3D</span> <span class="tag">Three.js</span> <span class="tag">Bloch</span>
+  </div>
+</div>
+
+<h2>Supplementary Material</h2>
+
+<div class="card">
+  <h3><a href="native_spherical_chaos.html">Native Spherical Chaos&nbsp;→</a></h3>
+  <div class="desc">
+    Chaos game rendered directly on the sphere surface.
+  </div>
+</div>
+
+<div class="card">
+  <h3><a href="Fractal%20Shepard.html">Fractal Shepard&nbsp;→</a></h3>
+  <div class="desc">
+    Fractal Shepard tone — auditory representation of the IFS depth process.
+  </div>
+</div>
+
+<div class="card">
+  <h3><a href="many_worlds_framing.html">Many-Worlds Framing&nbsp;→</a></h3>
+  <div class="desc">
+    An exposition of the many-worlds interpretation of the IFS depth process.
+  </div>
+</div>
+
+<hr>
+
+<h2>References</h2>
+
+<ul>
+  <li>Grim, P., Mar, G., &amp; St. Denis, P. (1998). <em>The Philosophical Computer: Exploratory Essays in Philosophical Computer Modeling</em>. MIT Press.</li>
+  <li>Grim, P. (1993). "Self-Reference and Chaos in Fuzzy Logic." <em>IEEE Trans. Fuzzy Systems</em>, 1(4), 237–253.</li>
+  <li>St. Denis, P., &amp; Grim, P. (1997). "Fractal Images of Formal Systems." <em>Journal of Philosophical Logic</em>, 26, 181–222.</li>
+</ul>
+
+<div class="foot">
+  Boolean Tile Basis — Work in Progress
+</div>
+</div>
+</body>
+</html>
