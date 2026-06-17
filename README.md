@@ -1,5 +1,7 @@
 # Boolean Tile Basis
 
+**GitHub Pages site:** [https://pstdenis.github.io/Boolean-Tile/](https://pstdenis.github.io/Boolean-Tile/)
+
 The 16 Boolean functions of two variables — the "Boolean tiles" — form a complete algebraic, geometric, and physical system. This project traces them from truth tables through Łukasiewicz logic, iterated function system (IFS) fractals, Bloch-sphere quantum states, 2-qubit unitary gates, and Ising spin Hamiltonians.
 
 ## Repository structure
