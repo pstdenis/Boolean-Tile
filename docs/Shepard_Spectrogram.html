@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shepard Tone Spectrogram Stack: 3D Walsh Spectral Volumes</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        html,body{width:100%;height:100%;overflow:hidden;background:#cbd5e1}
+        body{display:flex;align-items:flex-start;justify-content:center;font-family:system-ui,sans-serif}
+        .page{flex-shrink:0;width:fit-content;height:fit-content;transform-origin:0 0}
+        .tile-card{aspect-ratio:1/1;position:relative;overflow:hidden}
+        .tile-card canvas{display:block;width:100%!important;height:100%!important;position:relative;z-index:1}
+        .tile-card .checker{position:absolute;top:0;left:0;width:100%;height:100%;background-image:linear-gradient(45deg,#aaa 25%,transparent 25%),linear-gradient(-45deg,#aaa 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#aaa 75%),linear-gradient(-45deg,transparent 75%,#aaa 75%);background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;z-index:0;pointer-events:none}
+        .tile-header{position:absolute;top:0;left:0;right:0;text-align:center;padding:4px 6px;font-size:16px;font-weight:700;color:#1e293b;line-height:1.1;z-index:2;pointer-events:none;background:linear-gradient(to bottom,rgba(255,255,255,0.85),transparent)}
+        .tile-sub{position:absolute;bottom:0;left:0;right:0;text-align:center;font-size:9px;font-weight:500;color:#64748b;z-index:2;pointer-events:none;font-family:monospace;background:linear-gradient(to top,rgba(255,255,255,0.85),transparent)}
+        .depth-indicator{position:absolute;top:0;right:0;padding:2px 6px;font-size:8px;font-weight:600;color:#fff;background:rgba(0,0,0,0.6);border-radius:0 0 0 4px;z-index:3;pointer-events:none}
+        header{display:flex;align-items:center;gap:12px;padding:10px 0;flex-wrap:nowrap}
+        footer{height:24px}
+        header h1{font-size:20px;font-weight:700;color:#0f172a;white-space:nowrap}
+        header label{font-size:13px;font-weight:600;color:#475569;white-space:nowrap}
+        header input[type=range]{width:90px;accent-color:#6366f1;cursor:pointer}
+        header span{font-size:13px;font-weight:600;color:#6366f1}
+        #tileGrid{display:grid;grid-template-columns:repeat(4,260px);gap:3px}
+        .tile-card{background:#888;border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #e2e8f0;overflow:hidden}
+    </style>
+</head>
+<body>
+
+<div class="page">
+    <header>
+        <h1>Shepard Spectrogram Stack</h1>
+        <label>Depth (<span id="depthLabel">8</span>)</label>
+        <input type="range" id="depthSlider" min="1" max="8" value="8">
+    </header>
+    <main id="tileGrid"></main>
+    <footer></footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
+<script>
+    const TILES = [
+        { index: 0,  name: "FALSE",  sub: "0"      },
+        { index: 1,  name: "AND",    sub: "p\u2227q"},
+        { index: 2,  name: "A\u2227\u00acB", sub: "p\u00b7\u00acq"},
+        { index: 3,  name: "A",      sub: "p"      },
+        { index: 4,  name: "\u00acA\u2227B", sub: "\u00acp\u00b7q"},
+        { index: 5,  name: "B",      sub: "q"      },
+        { index: 6,  name: "XOR",    sub: "p\u2295q"},
+        { index: 7,  name: "OR",     sub: "p\u2228q"},
+        { index: 8,  name: "NOR",    sub: "p\u2193q"},
+        { index: 9,  name: "XNOR",   sub: "p\u2194q"},
+        { index: 10, name: "\u00acB", sub: "\u00acq"},
+        { index: 11, name: "B\u2192A", sub: "q\u2192p"},
+        { index: 12, name: "\u00acA", sub: "\u00acp"},
+        { index: 13, name: "A\u2192B", sub: "p\u2192q"},
+        { index: 14, name: "NAND",   sub: "p\u2191q"},
+        { index: 15, name: "TRUE",   sub: "1"      }
+    ];
+
+    const MAX_DEPTH = 8;
+    const SPECTROGRAM_W = 256;
+    const SPECTROGRAM_H = 256;
+    const Z_SLICE_SPACING = 0.18;
+
+    const grid = document.getElementById('tileGrid');
+    const slider = document.getElementById('depthSlider');
+    const dLabel = document.getElementById('depthLabel');
+    const tileData = [];
+    let controls = null;
+
+    function ifsAccum(row, col, tileIndex, depth) {
+        let acc = 0;
+        for (let i = 0; i < depth; i++) {
+            const rb = (row >> (depth - 1 - i)) & 1;
+            const cb = (col >> (depth - 1 - i)) & 1;
+            acc += ((tileIndex >> (3 - (rb * 2 + cb))) & 1) * (1 << (depth - 1 - i));
+        }
+        return acc;
+    }
+
+    function tileColor(ratio) {
+        const cr = 255 - ratio * 228;
+        const cg = 255 - ratio * 217;
+        const cb = 255 - ratio * 174;
+        return { r: cr, g: cg, b: cb };
+    }
+
+    function buildSpectrogramTexture(tileIndex, depth) {
+        const N = 1 << depth;
+        const maxVal = N - 1;
+        const steps = N;
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = SPECTROGRAM_W;
+        canvas.height = SPECTROGRAM_H;
+        const ctx = canvas.getContext('2d');
+        
+        const imgData = ctx.createImageData(SPECTROGRAM_W, SPECTROGRAM_H);
+        const data = imgData.data;
+        
+        const freqMin = 1;
+        const freqMax = 16;
+        const logMin = Math.log2(freqMin);
+        const logMax = Math.log2(freqMax);
+        
+        for (let x = 0; x < SPECTROGRAM_W; x++) {
+            const t = x / (SPECTROGRAM_W - 1);
+            const stepFloat = t * steps;
+            const stepIdx = Math.min(steps - 1, Math.floor(stepFloat));
+            
+            const row = stepIdx;
+            let total = 0;
+            let count = 0;
+            
+            for (let c = 0; c < N; c++) {
+                const acc = ifsAccum(row, c, tileIndex, depth);
+                total += acc;
+                count++;
+            }
+            const avgAcc = count > 0 ? total / count : 0;
+            const ratio = maxVal === 0 ? 0 : avgAcc / maxVal;
+            const freqLog = logMin + ratio * (logMax - logMin);
+            const freqNorm = (freqLog - logMin) / (logMax - logMin);
+            
+            for (let y = 0; y < SPECTROGRAM_H; y++) {
+                const yNorm = 1 - y / (SPECTROGRAM_H - 1);
+                const dist = Math.abs(yNorm - freqNorm);
+                let intensity = 0;
+                
+                const ridgeWidth = 0.015;
+                if (dist < ridgeWidth) {
+                    intensity = 1 - dist / ridgeWidth;
+                    const rampIdx = Math.floor(t * 8);
+                    const phase = (rampIdx % 2) * Math.PI;
+                    intensity *= 0.7 + 0.3 * Math.sin(t * 100 + phase);
+                }
+                
+                if (yNorm < freqNorm && yNorm > freqNorm - 0.008) {
+                    intensity = Math.max(intensity, 0.5);
+                }
+                
+                const idx = (y * SPECTROGRAM_W + x) * 4;
+                const { r, g, b } = tileColor(ratio);
+                const val = intensity;
+                data[idx] = Math.round(r * val);
+                data[idx + 1] = Math.round(g * val);
+                data[idx + 2] = Math.round(b * val);
+                data[idx + 3] = Math.round(255 * val);
+            }
+        }
+        
+        ctx.putImageData(imgData, 0, 0);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.needsUpdate = true;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        return texture;
+    }
+
+    function buildTileScene(tileIndex, depth) {
+        const card = document.getElementById('c' + tileIndex);
+        if (!card) return null;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1e293b);
+
+        const cam = new THREE.PerspectiveCamera(40, 1, 0.1, 50);
+        cam.position.set(2.2, 1.6, 3.2);
+        cam.lookAt(0, 0, 0);
+
+        const ren = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        ren.setSize(260, 260);
+        ren.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        card.appendChild(ren.domElement);
+
+        const group = new THREE.Group();
+        scene.add(group);
+
+        const planeGeo = new THREE.PlaneGeometry(1.4, 1.0);
+        const planeMat = new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: 0.92,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        });
+
+        const slices = [];
+        for (let d = 1; d <= MAX_DEPTH; d++) {
+            const texture = buildSpectrogramTexture(tileIndex, d);
+            const mat = planeMat.clone();
+            mat.map = texture;
+            mat.needsUpdate = true;
+            const mesh = new THREE.Mesh(planeGeo, mat);
+            mesh.position.z = (d - 1) * Z_SLICE_SPACING;
+            mesh.visible = d <= depth;
+            group.add(mesh);
+            slices.push({ mesh, depth: d });
+        }
+
+        const indicator = document.createElement('div');
+        indicator.className = 'depth-indicator';
+        indicator.textContent = 'd=' + depth;
+        card.appendChild(indicator);
+
+        return { scene, cam, ren, group, tileIndex, slices, indicator, depth };
+    }
+
+    function initGrid() {
+        grid.innerHTML = '';
+        TILES.forEach(t => {
+            const card = document.createElement('div');
+            card.className = 'tile-card';
+            card.id = 'c' + t.index;
+            card.innerHTML = `
+                <div class="checker"></div>
+                <div class="tile-header">${t.name}</div>
+                <div class="tile-sub">${t.sub}</div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    function rebuildAll() {
+        const d = parseInt(slider.value, 10);
+        dLabel.textContent = d;
+
+        tileData.forEach(td => {
+            td.slices.forEach(s => {
+                s.mesh.visible = s.depth <= d;
+            });
+            td.indicator.textContent = 'd=' + d;
+        });
+    }
+
+    function buildAll() {
+        const initDepth = parseInt(slider.value, 10);
+        TILES.forEach(t => {
+            const ts = buildTileScene(t.index, initDepth);
+            if (ts) tileData.push(ts);
+        });
+
+        if (tileData.length > 0) {
+            const first = tileData[0];
+            controls = new THREE.OrbitControls(first.cam, grid);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.6;
+            controls.minDistance = 1.5;
+            controls.maxDistance = 8;
+
+            controls.addEventListener('change', () => {
+                tileData.forEach(td => {
+                    td.cam.position.copy(first.cam.position);
+                    td.cam.quaternion.copy(first.cam.quaternion);
+                    td.cam.updateProjectionMatrix();
+                });
+            });
+
+            controls.update();
+        }
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        if (controls) controls.update();
+        tileData.forEach(ts => ts.ren.render(ts.scene, ts.cam));
+    }
+
+    function fitPage() {
+        const page = document.querySelector('.page');
+        const sw = page.scrollWidth;
+        const sh = page.scrollHeight;
+        const scale = Math.min(innerWidth / sw, innerHeight / sh);
+        page.style.transform = 'scale(' + scale + ')';
+        page.style.marginLeft = Math.round((innerWidth - sw * scale) / 2) + 'px';
+        page.style.marginTop = Math.round((innerHeight - sh * scale) / 2) + 'px';
+    }
+
+    slider.addEventListener('input', function() { rebuildAll(); setTimeout(fitPage, 10); });
+
+    function onReady() {
+        initGrid();
+        if (typeof THREE !== 'undefined' && typeof THREE.OrbitControls !== 'undefined') {
+            buildAll();
+            animate();
+        } else {
+            const chk = setInterval(() => {
+                if (typeof THREE !== 'undefined' && typeof THREE.OrbitControls !== 'undefined') {
+                    clearInterval(chk);
+                    buildAll();
+                    animate();
+                }
+            }, 100);
+        }
+        const page = document.querySelector('.page');
+        new ResizeObserver(() => fitPage()).observe(page);
+        fitPage();
+    }
+
+    window.addEventListener('load', onReady);
+    window.addEventListener('resize', () => fitPage());
+</script>
+</body>
+</html>

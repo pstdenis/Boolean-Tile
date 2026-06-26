@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: whff
+Version: 0.1.0
+Summary: Walsh Holographic File Format - dual-mode lossless encoder/decoder
+Author: Paul St. Denis
+License: MIT
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Topic :: Scientific/Engineering
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.24
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4; extra == "dev"
+Requires-Dist: hypothesis>=6.92; extra == "dev"
+Requires-Dist: pytest-cov>=4.1; extra == "dev"

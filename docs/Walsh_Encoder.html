@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Walsh Image Encoder: Progressive Bit-Plane Reconstruction</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        html,body{width:100%;height:100%;overflow:auto;background:#cbd5e1;font-family:system-ui,sans-serif}
+        body{display:flex;flex-direction:column;align-items:center;padding:20px;min-height:100vh}
+        .container{max-width:1200px;width:100%}
+        header{display:flex;align-items:center;gap:16px;padding:16px 0;flex-wrap:wrap}
+        header h1{font-size:24px;font-weight:700;color:#0f172a}
+        .controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:16px 0;padding:16px;background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+        .controls label{font-size:13px;font-weight:600;color:#475569;white-space:nowrap}
+        .controls input[type=range]{flex:1;max-width:300px;accent-color:#6366f1}
+        .controls span{font-size:13px;font-weight:600;color:#6366f1;min-width:3ch;text-align:right}
+        .file-input{display:none}
+        .btn{padding:8px 16px;background:#6366f1;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px}
+        .btn:hover{background:#4f46e5}
+        .btn:disabled{background:#94a3b8;cursor:not-allowed}
+        .comparison{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+        .panel{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden}
+        .panel-header{padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-weight:600;color:#1e293b;font-size:14px}
+        .canvas-wrapper{position:relative;aspect-ratio:1/1;background:#e2e8f0}
+        .canvas-wrapper canvas{display:block;width:100%!important;height:100%!important}
+        .info{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0;padding:12px;background:#f8fafc;border-radius:8px;font-size:13px;color:#475569}
+        .info .stat{background:#fff;padding:4px 10px;border-radius:4px;border:1px solid #e2e8f0;font-family:monospace}
+        .spectrum{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin:16px 0}
+        .spectrum-panel{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow:hidden}
+        .drop-zone{border:2px dashed #94a3b8;border-radius:8px;padding:40px;text-align:center;color:#64748b;cursor:pointer;transition:all .15s}
+        .drop-zone.active{border-color:#6366f1;background:#eef2ff;color:#4f46e5}
+        .drop-zone.has-image{border-color:#22c55e;background:#f0fdf4;color:#166534}
+        @media(max-width:800px){.comparison{grid-template-columns:1fr}.spectrum{grid-template-columns:1fr}}
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>Walsh Image Encoder</h1>
+    </header>
+
+    <div class="controls">
+        <div class="drop-zone" id="dropZone">
+            <input type="file" class="file-input" id="fileInput" accept="image/*">
+            <p id="dropText">Drop an image here or click to select</p>
+            <p style="font-size:12px;margin-top:8px;color:#94a3b8">PNG/JPG — auto-resized to 256×256</p>
+        </div>
+        <button class="btn" id="resetBtn" disabled>Reset to Default</button>
+    </div>
+
+    <div class="info">
+        <span>Depth (bit-planes):</span>
+        <input type="range" id="depthSlider" min="1" max="8" value="8" style="flex:1;max-width:400px;accent-color:#6366f1">
+        <span id="depthLabel">8</span>
+        <span class="stat">Active coeffs: <span id="coeffCount">256</span> / 65536</span>
+        <span class="stat">MSE: <span id="mseValue">0.0000</span></span>
+    </div>
+
+    <div class="comparison">
+        <div class="panel">
+            <div class="panel-header">Original (256×256)</div>
+            <div class="canvas-wrapper"><canvas id="origCanvas" width="256" height="256"></canvas></div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">Walsh Reconstruction (depth <span id="reconDepthLabel">8</span>)</div>
+            <div class="canvas-wrapper"><canvas id="reconCanvas" width="256" height="256"></canvas></div>
+        </div>
+    </div>
+
+    <div class="spectrum">
+        <div class="spectrum-panel">
+            <div class="panel-header">Walsh Spectrum (log magnitude)</div>
+            <div class="canvas-wrapper"><canvas id="specCanvas" width="256" height="256"></canvas></div>
+        </div>
+        <div class="spectrum-panel">
+            <div class="panel-header">Active Coefficients at Depth <span id="specDepthLabel">8</span></div>
+            <div class="canvas-wrapper"><canvas id="activeCanvas" width="256" height="256"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const IMG_SIZE = 256;
+    const MAX_DEPTH = 8;
+    const MAX_COEFFS = IMG_SIZE * IMG_SIZE;
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const dropText = document.getElementById('dropText');
+    const resetBtn = document.getElementById('resetBtn');
+    const depthSlider = document.getElementById('depthSlider');
+    const depthLabel = document.getElementById('depthLabel');
+    const reconDepthLabel = document.getElementById('reconDepthLabel');
+    const specDepthLabel = document.getElementById('specDepthLabel');
+    const coeffCount = document.getElementById('coeffCount');
+    const mseValue = document.getElementById('mseValue');
+    const origCanvas = document.getElementById('origCanvas');
+    const reconCanvas = document.getElementById('reconCanvas');
+    const specCanvas = document.getElementById('specCanvas');
+    const activeCanvas = document.getElementById('activeCanvas');
+
+    const origCtx = origCanvas.getContext('2d');
+    const reconCtx = reconCanvas.getContext('2d');
+    const specCtx = specCanvas.getContext('2d');
+    const activeCtx = activeCanvas.getContext('2d');
+
+    let originalData = null; // Float32Array [IMG_SIZE * IMG_SIZE], normalized 0-1
+    let walshCoeffs = null; // Float32Array [IMG_SIZE * IMG_SIZE], Walsh coefficients
+    let maxAbsCoeff = 1;
+
+    // Default pattern if no image loaded
+    const DEFAULT_PATTERN = true;
+
+    function fwht1d(arr, n) {
+        // In-place Fast Walsh-Hadamard Transform (Hadamard ordering)
+        for (let len = 1; len < n; len <<= 1) {
+            for (let i = 0; i < n; i += len << 1) {
+                for (let j = 0; j < len; j++) {
+                    const u = arr[i + j];
+                    const v = arr[i + j + len];
+                    arr[i + j] = u + v;
+                    arr[i + j + len] = u - v;
+                }
+            }
+        }
+    }
+
+    function ifwht1d(arr, n) {
+        // Inverse is same as forward, then divide by n
+        fwht1d(arr, n);
+        for (let i = 0; i < n; i++) arr[i] /= n;
+    }
+
+    function fwht2d(data, n) {
+        // Rows
+        const row = new Float32Array(n);
+        for (let y = 0; y < n; y++) {
+            for (let x = 0; x < n; x++) row[x] = data[y * n + x];
+            fwht1d(row, n);
+            for (let x = 0; x < n; x++) data[y * n + x] = row[x];
+        }
+        // Columns
+        const col = new Float32Array(n);
+        for (let x = 0; x < n; x++) {
+            for (let y = 0; y < n; y++) col[y] = data[y * n + x];
+            fwht1d(col, n);
+            for (let y = 0; y < n; y++) data[y * n + x] = col[y];
+        }
+        // Normalize by 1/N for forward transform
+        const scale = 1 / n;
+        for (let i = 0; i < n * n; i++) data[i] *= scale;
+    }
+
+    function ifwht2d(data, n) {
+        // Inverse: same as forward, then scale by 1/N (already done in 1D inverse)
+        // Actually inverse is forward then divide by N total
+        const row = new Float32Array(n);
+        for (let y = 0; y < n; y++) {
+            for (let x = 0; x < n; x++) row[x] = data[y * n + x];
+            ifwht1d(row, n);
+            for (let x = 0; x < n; x++) data[y * n + x] = row[x];
+        }
+        const col = new Float32Array(n);
+        for (let x = 0; x < n; x++) {
+            for (let y = 0; y < n; y++) col[y] = data[y * n + x];
+            ifwht1d(col, n);
+            for (let y = 0; y < n; y++) data[y * n + x] = col[y];
+        }
+    }
+
+    function highestBitIndex(x) {
+        // Returns 0-based index of highest set bit, or -1 for 0
+        if (x === 0) return -1;
+        return 31 - Math.clz32(x);
+    }
+
+    function computeWalshCoeffs(imageData) {
+        // imageData: Float32Array [IMG_SIZE * IMG_SIZE], values 0-1
+        // Convert to [-1, 1] for Walsh (centered)
+        const data = new Float32Array(IMG_SIZE * IMG_SIZE);
+        for (let i = 0; i < IMG_SIZE * IMG_SIZE; i++) {
+            data[i] = imageData[i] * 2 - 1;
+        }
+        fwht2d(data, IMG_SIZE);
+        return data;
+    }
+
+    function reconstructAtDepth(coeffs, depth) {
+        // depth: 1 to MAX_DEPTH
+        // Keep coefficients where max(highestBit(u), highestBit(v)) < depth
+        const filtered = new Float32Array(IMG_SIZE * IMG_SIZE);
+        let activeCount = 0;
+        for (let v = 0; v < IMG_SIZE; v++) {
+            const hbV = highestBitIndex(v);
+            for (let u = 0; u < IMG_SIZE; u++) {
+                const hbU = highestBitIndex(u);
+                const maxHb = Math.max(hbU, hbV);
+                if (maxHb < depth) {
+                    const idx = v * IMG_SIZE + u;
+                    filtered[idx] = coeffs[idx];
+                    activeCount++;
+                }
+            }
+        }
+        ifwht2d(filtered, IMG_SIZE);
+        // Convert back from [-1,1] to [0,1]
+        for (let i = 0; i < IMG_SIZE * IMG_SIZE; i++) {
+            filtered[i] = (filtered[i] + 1) * 0.5;
+        }
+        return { data: filtered, activeCount };
+    }
+
+    function renderToCanvas(ctx, data) {
+        const imgData = ctx.createImageData(IMG_SIZE, IMG_SIZE);
+        const pixels = imgData.data;
+        for (let i = 0; i < IMG_SIZE * IMG_SIZE; i++) {
+            const v = Math.max(0, Math.min(1, data[i]));
+            const val = Math.round(v * 255);
+            pixels[i * 4] = val;
+            pixels[i * 4 + 1] = val;
+            pixels[i * 4 + 2] = val;
+            pixels[i * 4 + 3] = 255;
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    function renderSpectrum(ctx, coeffs) {
+        const imgData = ctx.createImageData(IMG_SIZE, IMG_SIZE);
+        const pixels = imgData.data;
+        // Find max for log scaling
+        let maxVal = 0;
+        for (let i = 0; i < IMG_SIZE * IMG_SIZE; i++) {
+            const mag = Math.abs(coeffs[i]);
+            if (mag > maxVal) maxVal = mag;
+        }
+        maxAbsCoeff = maxVal;
+        for (let v = 0; v < IMG_SIZE; v++) {
+            for (let u = 0; u < IMG_SIZE; u++) {
+                const idx = v * IMG_SIZE + u;
+                const mag = Math.abs(coeffs[idx]);
+                const logMag = maxVal > 0 ? Math.log1p(mag) / Math.log1p(maxVal) : 0;
+                const val = Math.round(logMag * 255);
+                pixels[idx * 4] = val;
+                pixels[idx * 4 + 1] = val;
+                pixels[idx * 4 + 2] = val;
+                pixels[idx * 4 + 3] = 255;
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    function renderActiveCoeffs(ctx, coeffs, depth) {
+        const imgData = ctx.createImageData(IMG_SIZE, IMG_SIZE);
+        const pixels = imgData.data;
+        for (let v = 0; v < IMG_SIZE; v++) {
+            const hbV = highestBitIndex(v);
+            for (let u = 0; u < IMG_SIZE; u++) {
+                const hbU = highestBitIndex(u);
+                const maxHb = Math.max(hbU, hbV);
+                const active = maxHb < depth;
+                const idx = v * IMG_SIZE + u;
+                if (active) {
+                    const mag = Math.abs(coeffs[idx]);
+                    const logMag = maxAbsCoeff > 0 ? Math.log1p(mag) / Math.log1p(maxAbsCoeff) : 0;
+                    const val = Math.round(logMag * 255);
+                    pixels[idx * 4] = val;
+                    pixels[idx * 4 + 1] = val;
+                    pixels[idx * 4 + 2] = val;
+                    pixels[idx * 4 + 3] = 255;
+                } else {
+                    pixels[idx * 4] = 0;
+                    pixels[idx * 4 + 1] = 0;
+                    pixels[idx * 4 + 2] = 0;
+                    pixels[idx * 4 + 3] = 255;
+                }
+            }
+        }
+        ctx.putImageData(imgData, 0, 0);
+    }
+
+    function computeMSE(original, reconstructed) {
+        let sum = 0;
+        for (let i = 0; i < original.length; i++) {
+            const diff = original[i] - reconstructed[i];
+            sum += diff * diff;
+        }
+        return sum / original.length;
+    }
+
+    function updateDisplay(depth) {
+        depthLabel.textContent = depth;
+        reconDepthLabel.textContent = depth;
+        specDepthLabel.textContent = depth;
+
+        const { data: reconData, activeCount } = reconstructAtDepth(walshCoeffs, depth);
+        renderToCanvas(reconCtx, reconData);
+
+        coeffCount.textContent = activeCount.toLocaleString();
+
+        const mse = computeMSE(originalData, reconData);
+        mseValue.textContent = mse.toFixed(6);
+
+        renderActiveCoeffs(activeCtx, walshCoeffs, depth);
+    }
+
+    function loadImageFromFile(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                // Draw to temp canvas and resize
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = IMG_SIZE;
+                tempCanvas.height = IMG_SIZE;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(img, 0, 0, IMG_SIZE, IMG_SIZE);
+                
+                const imgData = tempCtx.getImageData(0, 0, IMG_SIZE, IMG_SIZE);
+                const pixels = imgData.data;
+                
+                originalData = new Float32Array(IMG_SIZE * IMG_SIZE);
+                for (let i = 0; i < IMG_SIZE * IMG_SIZE; i++) {
+                    const r = pixels[i * 4];
+                    const g = pixels[i * 4 + 1];
+                    const b = pixels[i * 4 + 2];
+                    // Grayscale luminance
+                    originalData[i] = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                }
+
+                // Compute Walsh coefficients
+                walshCoeffs = computeWalshCoeffs(originalData);
+
+                // Render original
+                renderToCanvas(origCtx, originalData);
+
+                // Render spectrum
+                renderSpectrum(specCtx, walshCoeffs);
+
+                // Update display at current depth
+                const depth = parseInt(depthSlider.value, 10);
+                updateDisplay(depth);
+
+                // UI updates
+                dropZone.classList.remove('active');
+                dropZone.classList.add('has-image');
+                dropText.textContent = file.name;
+                resetBtn.disabled = false;
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function generateDefaultPattern() {
+        originalData = new Float32Array(IMG_SIZE * IMG_SIZE);
+        // Create a test pattern: gradient + circles + checkerboard
+        for (let y = 0; y < IMG_SIZE; y++) {
+            for (let x = 0; x < IMG_SIZE; x++) {
+                const fx = x / (IMG_SIZE - 1);
+                const fy = y / (IMG_SIZE - 1);
+                let val = 0;
+                // Gradient
+                val += fx * 0.3 + fy * 0.2;
+                // Concentric circles
+                const cx = x - IMG_SIZE / 2;
+                const cy = y - IMG_SIZE / 2;
+                const r = Math.sqrt(cx * cx + cy * cy);
+                val += 0.3 * (0.5 + 0.5 * Math.sin(r * 0.1));
+                // Checkerboard
+                val += 0.2 * ((Math.floor(fx * 16) + Math.floor(fy * 16)) % 2);
+                // Noise
+                val += 0.1 * Math.random();
+                originalData[y * IMG_SIZE + x] = Math.max(0, Math.min(1, val));
+            }
+        }
+
+        walshCoeffs = computeWalshCoeffs(originalData);
+        renderToCanvas(origCtx, originalData);
+        renderSpectrum(specCtx, walshCoeffs);
+        const depth = parseInt(depthSlider.value, 10);
+        updateDisplay(depth);
+
+        dropZone.classList.remove('active');
+        dropZone.classList.add('has-image');
+        dropText.textContent = 'Default pattern (click Reset to reload)';
+        resetBtn.disabled = false;
+    }
+
+    function resetToDefault() {
+        dropZone.classList.remove('has-image');
+        dropZone.classList.remove('active');
+        dropText.textContent = 'Drop an image here or click to select';
+        resetBtn.disabled = true;
+        if (DEFAULT_PATTERN) {
+            generateDefaultPattern();
+        } else {
+            origCtx.clearRect(0, 0, IMG_SIZE, IMG_SIZE);
+            reconCtx.clearRect(0, 0, IMG_SIZE, IMG_SIZE);
+            specCtx.clearRect(0, 0, IMG_SIZE, IMG_SIZE);
+            activeCtx.clearRect(0, 0, IMG_SIZE, IMG_SIZE);
+            originalData = null;
+            walshCoeffs = null;
+        }
+    }
+
+    // Drag and drop
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('active');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('active');
+        if (e.dataTransfer.files.length) loadImageFromFile(e.dataTransfer.files[0]);
+    });
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) loadImageFromFile(e.target.files[0]);
+    });
+    resetBtn.addEventListener('click', resetToDefault);
+
+    depthSlider.addEventListener('input', () => {
+        const depth = parseInt(depthSlider.value, 10);
+        updateDisplay(depth);
+    });
+
+    // Initialize with default pattern
+    if (DEFAULT_PATTERN) {
+        generateDefaultPattern();
+    }
+</script>
+</body>
+</html>

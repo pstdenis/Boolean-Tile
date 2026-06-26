@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTB IFS: Boolean Tile Basis</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        html,body{width:100%;height:100%;overflow:hidden;background:#cbd5e1}
+        body{display:flex;align-items:flex-start;justify-content:center;font-family:system-ui,sans-serif}
+        .page{flex-shrink:0;width:fit-content;height:fit-content;transform-origin:0 0}
+        .tile-card{aspect-ratio:1/1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+        canvas{display:block;width:calc(100% - 80px);height:calc(100% - 80px);image-rendering:auto}
+        .tile-header{position:absolute;top:0;left:0;right:0;text-align:center;padding:6px 8px;font-size:22px;font-weight:700;color:#1e293b;line-height:1.1;z-index:1;pointer-events:none}
+        header{display:flex;align-items:center;gap:12px;padding:10px 0;flex-wrap:nowrap}
+        footer{height:24px}
+        header h1{font-size:20px;font-weight:700;color:#0f172a;white-space:nowrap}
+        header label{font-size:13px;font-weight:600;color:#475569;white-space:nowrap}
+        header input[type=range]{width:90px;accent-color:#6366f1;cursor:pointer}
+        header span{font-size:13px;font-weight:600;color:#6366f1}
+        #tileGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+        .tile-card{background:#888;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #888;overflow:hidden}
+    </style>
+</head>
+<body>
+
+<div class="page">
+    <header>
+        <h1>Boolean Tile Basis — Rectangular IFS</h1>
+        <label>Depth (<span id="depthLabel">4</span>)</label>
+        <input type="range" id="depthSlider" min="1" max="8" value="4">
+        <label style="margin-left:12px">Mode</label>
+        <select id="modeSelect" style="font-size:13px;padding:2px 6px;border:1px solid #94a3b8;border-radius:4px;background:#f1f5f9;color:#1e293b;cursor:pointer;outline:none">
+            <option value="value">Value (weighted)</option>
+            <option value="density">Density (strict IFS)</option>
+        </select>
+    </header>
+
+    <main id="tileGrid" class="grid grid-cols-4 gap-1"></main>
+    <footer></footer>
+</div>
+
+<script>
+    const TILES = [
+        { index: 0,  name: "FALSE"  }, { index: 1,  name: "AND"    },
+        { index: 2,  name: "A ∧ ¬B" }, { index: 3,  name: "A"      },
+        { index: 4,  name: "¬A ∧ B" }, { index: 5,  name: "B"      },
+        { index: 6,  name: "XOR"    }, { index: 7,  name: "OR"     },
+        { index: 8,  name: "NOR"    }, { index: 9,  name: "XNOR"   },
+        { index: 10, name: "¬B"     }, { index: 11, name: "B → A"  },
+        { index: 12, name: "¬A"     }, { index: 13, name: "A → B"  },
+        { index: 14, name: "NAND"   }, { index: 15, name: "TRUE"   }
+    ];
+
+    const grid = document.getElementById('tileGrid');
+    const slider = document.getElementById('depthSlider');
+    const dLabel = document.getElementById('depthLabel');
+    const modeSelect = document.getElementById('modeSelect');
+
+    function initGrid() {
+        grid.innerHTML = '';
+        TILES.forEach(t => {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-xl shadow-sm border overflow-hidden tile-card border-slate-200';
+            card.innerHTML = `
+                    <canvas id="c${t.index}" width="400" height="400"></canvas>
+                    <div class="tile-header">${t.name}</div>
+                `;
+            grid.appendChild(card);
+        });
+    }
+
+    function draw(canvasId, tileIndex, depth) {
+        const c = document.getElementById(canvasId);
+        const ctx = c.getContext('2d', { alpha: false });
+        const mode = modeSelect.value;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, 400, 400);
+        const N = 1 << depth;
+        const cellW = 400 / N;
+        const cellH = 400 / N;
+        const maxVal = (1 << depth) - 1;
+        for (let r = 0; r < N; r++) {
+            for (let col = 0; col < N; col++) {
+                let acc = 0;
+                for (let i = 0; i < depth; i++) {
+                    const rb = (r >> (depth - 1 - i)) & 1;
+                    const cb = (col >> (depth - 1 - i)) & 1;
+                    const bit = (tileIndex >> (3 - (rb * 2 + cb))) & 1;
+                    acc += mode === 'density' ? bit : bit * (1 << (depth - 1 - i));
+                }
+                if (acc === 0) continue;
+                const ratio = mode === 'density' ? acc / depth : acc / maxVal;
+                ctx.fillStyle = `rgb(${255 - ratio * 228},${255 - ratio * 217},${255 - ratio * 174})`;
+                ctx.fillRect(col * cellW, r * cellH, cellW, cellH);
+            }
+        }
+    }
+
+    function render() {
+        const d = parseInt(slider.value, 10);
+        dLabel.textContent = d;
+        TILES.forEach(t => draw('c' + t.index, t.index, d));
+    }
+
+    function fitPage() {
+        const page = document.querySelector('.page');
+        const sw = page.scrollWidth;
+        const sh = page.scrollHeight;
+        const scale = Math.min(innerWidth / sw, innerHeight / sh);
+        page.style.transform = 'scale(' + scale + ')';
+        page.style.marginLeft = Math.round((innerWidth - sw * scale) / 2) + 'px';
+        page.style.marginTop = Math.round((innerHeight - sh * scale) / 2) + 'px';
+    }
+
+    slider.addEventListener('input', function() { render(); setTimeout(fitPage, 10); });
+    modeSelect.addEventListener('change', render);
+    function onReady() {
+        initGrid();
+        render();
+        const page = document.querySelector('.page');
+        new ResizeObserver(function() { fitPage(); }).observe(page);
+        fitPage();
+    }
+    window.addEventListener('load', onReady);
+    window.addEventListener('resize', function() { fitPage(); });
+</script>
+</body>
+</html>
