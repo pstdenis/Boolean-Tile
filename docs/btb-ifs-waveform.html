@@ -50,6 +50,8 @@
         <span class="val" id="depthLabel">4</span>
         <label>Vol</label>
         <input type="range" id="volumeSlider" min="0" max="100" value="30">
+        <label>Pos</label>
+        <input type="range" id="posSlider" min="0" max="100" value="0">
         <label class="toggle">
             <input type="checkbox" id="autoZoom">
             <span class="tk"></span>
@@ -104,6 +106,7 @@
     let audioCtx = null;
     let voices = [];
     let baseVolume = 0.164;
+    let phasePos = 0;
 
     const grid = document.getElementById('tileGrid');
     const oscCanvas = document.getElementById('oscilloscope');
@@ -111,6 +114,7 @@
     const slider = document.getElementById('depthSlider');
     const dLabel = document.getElementById('depthLabel');
     const volumeSlider = document.getElementById('volumeSlider');
+    const posSlider = document.getElementById('posSlider');
     const autoZoomChk = document.getElementById('autoZoom');
     const activeTileDisp = document.getElementById('activeTileDisplay');
     const audioStatusEl = document.getElementById('audioStatus');
@@ -206,13 +210,14 @@
         const fbv = bits[0] === 1 ? 1 : -1;
         const yo = 2 * fbv * (1 - Math.pow(2, -zoomPower));
         const fw = zoomPower - Math.floor(zoomPower);
+        const offset = Math.min(phasePos / 100, Math.max(0, 1 - 1 / currentZoom));
         oscCtx.strokeStyle = '#38bdf8';
         oscCtx.lineWidth = 3;
         oscCtx.shadowBlur = 10;
         oscCtx.shadowColor = '#38bdf8';
         oscCtx.beginPath();
         for (let i = 0; i <= pts; i++) {
-            const p = (i / pts) / currentZoom;
+            const p = offset + (i / pts) / currentZoom;
             const r = getFractalWaveValue(bits, p, depth, fw);
             const adj = (r - yo) * ys;
             const cy = (h / 2) - (adj / 2) * (h / 2) * 0.8;
@@ -319,6 +324,8 @@
             return;
         }
         currentTileId = id;
+        phasePos = 0;
+        posSlider.value = 0;
         document.querySelector(`.tile-card[data-id='${id}']`).classList.add('active');
         activeTileDisp.textContent = TILES[id].name;
         drawWaveform(currentTileId, currentDepth);
@@ -371,6 +378,11 @@
             if (isAutoZoom) updateAudioZoom(zoomPower);
             else setSingleVoiceMix(false);
         }
+    });
+
+    posSlider.addEventListener('input', function() {
+        phasePos = parseFloat(this.value);
+        if (currentTileId !== null) drawWaveform(currentTileId, currentDepth);
     });
 
     // --- fitPage ---
