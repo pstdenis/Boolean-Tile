@@ -38,6 +38,21 @@
         .toggle .tk:after{content:'';position:absolute;height:12px;width:12px;left:2px;bottom:2px;background:#fff;border-radius:50%;transition:.25s}
         .toggle input:checked+.tk{background:#38bdf8}
         .toggle input:checked+.tk:after{transform:translateX(12px)}
+
+        @media (max-width: 820px) {
+            .main-content{flex-direction:column}
+            .left-panel,.right-panel{width:100%}
+            #oscilloscope{height:260px}
+            header h1{font-size:11px;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            header{flex-wrap:wrap;height:auto;min-height:36px;gap:4px;padding:3px 0}
+            header input[type=range]{width:36px}
+            header label{font-size:10px}
+            header .val,.toggle{font-size:10px}
+            header .name{font-size:10px}
+            .toggle .tk{width:24px;height:14px}
+            .toggle .tk:after{height:10px;width:10px}
+            .toggle input:checked+.tk:after{transform:translateX(10px)}
+        }
     </style>
 </head>
 <body>
