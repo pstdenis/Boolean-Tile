@@ -64,7 +64,7 @@
         <input type="range" id="depthSlider" min="1" max="8" value="1">
         <span class="val" id="depthLabel">4</span>
         <label>Vol</label>
-        <input type="range" id="volumeSlider" min="0" max="100" value="30">
+        <input type="range" id="volumeSlider" min="0" max="100" value="0">
         <label>Pos</label>
         <input type="range" id="posSlider" min="0" max="100" value="0">
         <label class="toggle">
@@ -120,7 +120,7 @@
 
     let audioCtx = null;
     let voices = [];
-    let baseVolume = 0.164;
+    let baseVolume = 0.02;
     let phasePos = 0;
 
     const grid = document.getElementById('tileGrid');
