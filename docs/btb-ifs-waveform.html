@@ -209,7 +209,7 @@
         const ys = Math.pow(2, zoomPower);
         const fbv = bits[0] === 1 ? 1 : -1;
         const yo = 2 * fbv * (1 - Math.pow(2, -zoomPower));
-        const fw = zoomPower > depth ? zoomPower - Math.floor(zoomPower) : 0;
+        const fw = zoomPower - Math.floor(zoomPower);
         const offset = Math.min(phasePos / 100, Math.max(0, 1 - 1 / currentZoom));
         oscCtx.strokeStyle = '#38bdf8';
         oscCtx.lineWidth = 3;
