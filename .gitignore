@@ -6,3 +6,6 @@ scratch/
 
 /*.html
 Polar IFS_bak.html
+
+# BL4@ CMS
+blag/node_modules/

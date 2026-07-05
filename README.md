@@ -34,6 +34,32 @@ $$U_f^{(X)} = \exp\!\bigl(-i\,(\tfrac{\pi}{2}I - \tfrac{\pi}{2}\sum_{S\neq\empty
 
 The IFS/liear chaos-game approach to logical systems originates with Grim, Mar, and St. Denis (*The Philosophical Computer*, MIT Press 1998). This project extends their framework to the Bloch sphere, to quantum gate synthesis, and to physical Hamiltonian realizations.
 
+## Blog
+
+Research notes live in [`content/blog/`](./content/blog/) and are published at the
+[/blog/](https://pstdenis.github.io/Boolean-Tile/blog/) page.
+
+A local CMS (**BL4@**) runs on port 8746 for writing and editing posts:
+
+```sh
+cd blag && npm start
+```
+
+Open [http://localhost:8746](http://localhost:8746) in a browser.
+
+## gir
+
+This repo has an in-house AI personality called **gir** (Git Intelligence Reader).
+`gir.md` defines its commands and character. If an LLM reads this repo, it should
+also read `gir.md` — that file is gir's identity.
+
+Available commands (say in any LLM chat with this context):
+- `gir push` — commit and push changes
+- `gir talk` — review recent blog posts
+- `gir build` — build the Eleventy site
+- `gir status` — repo summary
+- `gir help` — list commands
+
 ## License
 
 All materials are provided for research and educational purposes.
