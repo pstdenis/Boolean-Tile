@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reich Phasing — Rainbow Passage</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#c8c8d0;font-family:system-ui,-apple-system,sans-serif;display:flex;justify-content:center;min-height:100vh;padding:20px}
+.container{max-width:880px;width:100%}
+h1{font-weight:300;font-size:1.5rem;letter-spacing:.04em;margin-bottom:2px;color:#e0e0ea}
+.sub{font-size:.8rem;color:#68687a;margin-bottom:16px}
+canvas{width:100%;aspect-ratio:880/600;background:#0e0e16;border-radius:8px;display:block;margin-bottom:12px;cursor:pointer}
+audio{width:100%;margin-bottom:12px}
+audio::-webkit-media-controls-panel{background:#14141e}
+.details{font-size:.78rem;color:#58586a;line-height:1.6;border-top:1px solid #1a1a28;padding-top:12px}
+.details span{color:#7a7a8c}
+.grid{display:grid;grid-template-columns:auto 1fr;gap:2px 16px;margin-top:6px}
+.label{color:#48485a}
+.speeds{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.speed-dot{display:inline-flex;align-items:center;gap:4px;font-size:.75rem;color:#7a7a8c}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Reich Phasing</h1>
+<div class="sub">Rainbow Passage · 18:36</div>
+<canvas id="c"></canvas>
+<audio id="a" src="reich_phasing_19min.m4a" controls preload="metadata"></audio>
+<div class="details">
+  <div>6-voice Reich-style phasing · 100 cycles · 2s crossfade</div>
+  <div class="speeds" id="speedList"></div>
+  <div class="grid" style="margin-top:6px">
+    <span class="label">Source</span><span>Rainbow Passage (gTTS), 11.16s @ 16 kHz</span>
+    <span class="label">Method</span><span>librosa.time_stretch, 6 speed ratios, summed &amp; normalized</span>
+  </div>
+</div>
+</div>
+<script>
+const speeds = [1.0, 1.01, 0.99, 1.02, 0.98, 1.03];
+const colors = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#c44dff','#ff8c42'];
+const basePeriod = 11.160;
+const periods = speeds.map(s => basePeriod * s);
+const labels = ['V1','V2','V3','V4','V5','V6'];
+
+// Speed legend
+const list = document.getElementById('speedList');
+speeds.forEach((s,i)=>{
+  const el = document.createElement('span');
+  el.className = 'speed-dot';
+  el.innerHTML = `<span class="dot" style="background:${colors[i]}"></span>${labels[i]}=${s.toFixed(3)}`;
+  list.appendChild(el);
+});
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const audio = document.getElementById('a');
+
+let w, h, phaseH, waveH, cx, cy, radius;
+let analyser = null;
+let data = null;
+let ctxInit = false;
+
+function resize(){
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  w = rect.width;
+  h = rect.height;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  phaseH = h * 0.7;
+  waveH = h * 0.3;
+  cx = w / 2;
+  cy = phaseH / 2;
+  radius = Math.min(cx, cy) * 0.55;
+}
+
+function initAudio(){
+  if(ctxInit) return;
+  try{
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ac.createMediaElementSource(audio);
+    const an = ac.createAnalyser();
+    an.fftSize = 2048;
+    src.connect(an);
+    an.connect(ac.destination);
+    analyser = an;
+    data = new Uint8Array(an.frequencyBinCount);
+    ctxInit = true;
+  }catch(e){ console.warn('AudioContext init:', e); }
+}
+
+// Init AudioContext when playback starts
+audio.addEventListener('play', initAudio, {once:true});
+canvas.addEventListener('click', ()=>{
+  if(audio.paused) audio.play();
+  else audio.pause();
+});
+
+resize();
+window.addEventListener('resize', resize);
+
+function drawPhase(time){
+  const t = audio.currentTime || 0;
+
+  // Faint reference circle
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(60,60,80,0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,6]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Compute dot positions
+  const pts = periods.map(p => {
+    const phase = ((t % p) / p) || 0;
+    const angle = phase * Math.PI * 2 - Math.PI / 2;
+    return {
+      x: cx + radius * Math.cos(angle),
+      y: cy + radius * Math.sin(angle),
+      phase
+    };
+  });
+
+  // Lines from center to each dot
+  pts.forEach((p,i)=>{
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = colors[i] + '20';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // Polygon connecting all dots
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  ctx.strokeStyle = 'rgba(200,200,220,0.15)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Dots
+  pts.forEach((p,i)=>{
+    const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 14);
+    grad.addColorStop(0, colors[i]);
+    grad.addColorStop(0.3, colors[i] + 'cc');
+    grad.addColorStop(1, colors[i] + '00');
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#8888a0';
+    ctx.font = '11px system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(labels[i], p.x, p.y - 16);
+  });
+}
+
+function drawWaveform(){
+  if(!analyser || !data) return;
+
+  analyser.getByteTimeDomainData(data);
+  const y0 = h - waveH;
+  const wfH = waveH;
+
+  // Background
+  ctx.fillStyle = 'rgba(10,10,16,0.3)';
+  ctx.fillRect(0, y0, w, wfH);
+
+  // Divider line
+  ctx.beginPath();
+  ctx.moveTo(0, y0);
+  ctx.lineTo(w, y0);
+  ctx.strokeStyle = 'rgba(60,60,80,0.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Waveform
+  const len = data.length;
+  ctx.beginPath();
+  ctx.moveTo(0, y0 + wfH / 2);
+  for(let i=0;i<len;i++){
+    const x = (i / len) * w;
+    const val = data[i] / 128 - 1; // -1 to 1
+    const y = y0 + wfH / 2 + val * wfH * 0.4;
+    ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#4d96ff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Center line
+  ctx.beginPath();
+  ctx.moveTo(0, y0 + wfH / 2);
+  ctx.lineTo(w, y0 + wfH / 2);
+  ctx.strokeStyle = 'rgba(60,60,80,0.15)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function loop(now){
+  ctx.clearRect(0, 0, w, h);
+
+  // Background
+  ctx.fillStyle = '#0e0e16';
+  ctx.fillRect(0, 0, w, h);
+
+  drawPhase(now);
+  drawWaveform();
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
