@@ -5,6 +5,7 @@ Thumbs.db
 scratch/
 
 /*.html
+!/reich_phasing.html
 Polar IFS_bak.html
 
 # BL4@ CMS
